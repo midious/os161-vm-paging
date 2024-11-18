@@ -462,3 +462,10 @@ defoption fork
 
 
 defoption paging
+
+optfile paging vm/coremap.c
+optfile paging vm/pt.c
+optfile paging vm/segments.c
+optfile paging vm/vm_tlb.c
+optfile paging vm/swapfile.c
+optfile paging vm/vmstats.c
