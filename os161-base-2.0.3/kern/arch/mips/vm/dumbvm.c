@@ -39,6 +39,9 @@
 #include <addrspace.h>
 #include <vm.h>
 
+#include <pt.h>
+#include <segments.h>
+
 /*
  * Dumb MIPS-only "VM system" that is intended to only be just barely
  * enough to struggle off the ground. You should replace all of this

@@ -30,15 +30,58 @@
 #include <types.h>
 #include <kern/errno.h>
 #include <lib.h>
+#include <spl.h>
+#include <cpu.h>
+#include <spinlock.h>
+#include <proc.h>
+#include <current.h>
+#include <mips/tlb.h>
 #include <addrspace.h>
 #include <vm.h>
-#include <proc.h>
+#include <coremap.h>
 
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
  * assignment, this file is not compiled or linked or in any way
  * used. The cheesy hack versions in dumbvm.c are used instead.
  */
+
+
+#define PAGING_STACKPAGES    18
+
+static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
+
+static struct spinlock freemem_lock = SPINLOCK_INITIALIZER;
+
+
+void
+vm_bootstrap(void)
+{
+
+	//inizializza stats coremap e swap
+	/* Do nothing. */
+}
+
+void
+vm_tlbshootdown(const struct tlbshootdown *ts)
+{
+	(void)ts;
+	panic("dumbvm tried to do tlb shootdown?!\n");
+}
+
+static void
+can_sleep(void)
+{
+	if (CURCPU_EXISTS()) {
+		/* must not hold spinlocks */
+		KASSERT(curcpu->c_spinlocks == 0);
+
+		/* must not be in an interrupt handler */
+		KASSERT(curthread->t_in_interrupt == 0);
+	}
+}
+
+
 
 struct addrspace *
 as_create(void)
@@ -50,9 +93,47 @@ as_create(void)
 		return NULL;
 	}
 
-	/*
-	 * Initialize as needed.
-	 */
+	as->page_table = kmalloc(sizeof(struct pt));
+	if (as->page_table == NULL)
+	{
+		return NULL;
+	}
+
+	as->page_table->code = kmalloc(sizeof(struct segment));
+	if(as->page_table->code == NULL)
+	{
+		return NULL;
+	}
+
+	as->page_table->data = kmalloc(sizeof(struct segment));
+	if(as->page_table->data == NULL)
+	{
+		return NULL;
+	}
+
+	as->page_table->stack = kmalloc(sizeof(struct segment));
+	if(as->page_table->stack == NULL)
+	{
+		return NULL;
+	}
+
+	as->page_table->code->entries = kmalloc(sizeof(struct entry));
+	if(as->page_table->code->entries == NULL)
+	{
+		return NULL;
+	}
+
+	as->page_table->data->entries = kmalloc(sizeof(struct entry));
+	if(as->page_table->data->entries == NULL)
+	{
+		return NULL;
+	}
+
+	as->page_table->stack->entries = kmalloc(sizeof(struct entry));
+	if(as->page_table->stack->entries == NULL)
+	{
+		return NULL;
+	}
 
 	return as;
 }
@@ -98,12 +179,20 @@ as_activate(void)
 		 * Kernel thread without an address space; leave the
 		 * prior address space in place.
 		 */
-		return;
+		return NULL;
 	}
 
-	/*
-	 * Write this.
-	 */
+	//rivedi per bene. Dovrebbe esseregiusto così
+
+	spl = splhigh();
+
+	for (i=0; i<NUM_TLB; i++) {
+		tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
+	}
+
+	splx(spl);
+
+	
 }
 
 void
