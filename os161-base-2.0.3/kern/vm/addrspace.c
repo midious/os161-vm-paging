@@ -82,6 +82,82 @@ can_sleep(void)
 }
 
 
+int vm_fault(int faulttype, vaddr_t faultaddress)
+{
+	vaddr_t vbase1, vtop1, vbase2, vtop2, stackbase, stacktop;
+	paddr_t paddr;
+	int i;
+	uint32_t ehi, elo;
+	struct addrspace *as;
+	int spl;
+
+	faultaddress &= PAGE_FRAME; //indirizzo logico in cui avviene il tlb fault
+
+	DEBUG(DB_VM, "dumbvm: fault: 0x%x\n", faultaddress);
+
+	switch (faulttype) {
+	    case VM_FAULT_READONLY:
+		/* We always create pages read-write, so we can't get this */
+		panic("dumbvm: got VM_FAULT_READONLY\n"); //FORSE DA TOGLIERE
+	    case VM_FAULT_READ:
+	    case VM_FAULT_WRITE:
+		break;
+	    default:
+		return EINVAL;
+	}
+
+	if (curproc == NULL) {
+		/*
+		 * No process. This is probably a kernel fault early
+		 * in boot. Return EFAULT so as to panic instead of
+		 * getting into an infinite faulting loop.
+		 */
+		return EFAULT;
+	}
+
+	as = proc_getas();
+	if (as == NULL) {
+		/*
+		 * No address space set up. This is probably also a
+		 * kernel fault early in boot.
+		 */
+		return EFAULT;
+	}
+
+
+	KASSERT(as->page_table != NULL);
+
+	KASSERT(as->page_table->code != NULL);
+	KASSERT(as->page_table->data != NULL);
+	KASSERT(as->page_table->stack != NULL);
+
+	KASSERT(as->page_table->code->v_base!=0);
+	KASSERT(as->page_table->code->npages!=0);
+	KASSERT(as->page_table->code->entries!=NULL);
+
+	KASSERT(as->page_table->data->v_base!=0);
+	KASSERT(as->page_table->data->npages!=0);
+	KASSERT(as->page_table->data->entries!=NULL);
+
+	KASSERT(as->page_table->stack->v_base!=0);
+	KASSERT(as->page_table->stack->npages!=0);
+	KASSERT(as->page_table->stack->entries!=NULL);
+
+	//gli indirizzi logici di partenza dei segmenti devono essere allineati alla pagina
+	KASSERT(as->page_table->code->v_base & PAGE_FRAME as->page_table->code->v_base);
+	KASSERT(as->page_table->data->v_base & PAGE_FRAME as->page_table->data->v_base);
+	KASSERT(as->page_table->stack->v_base & PAGE_FRAME as->page_table->stack->v_base);
+
+	//Cercare nella ram l'indirizzo fisico fisico corrispondente all'indirizzo logico del faultaddress e CONTROLLARE VALID BIT.
+	//Se non è valida la entry significa che non è in memoria perché non è stato caricato ancora oppure la pagina è stata sostituita.
+	//Se è presente in memoria carico semplicemente nella TLB.
+	//Se non è presente, devo cercare un frame libero
+
+
+
+}
+
+
 
 struct addrspace *
 as_create(void)
@@ -349,6 +425,28 @@ int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
 	KASSERT(as->page_table->stack->vaddr != 0);
+
+	as->page_table->stack->vaddr = USERSTACK;
+	as->page_table->stack->npages = PAGING_STACKPAGES;
+	as->page_table->stack->entries = kmalloc(PAGING_STACKPAGES * sizeof());
+
+	if (as->page_table->stack->entries == NULL)
+	{
+		kfree(as->page_table->code);
+		kfree(as->page_table->data);
+		kfree(as->page_table->stack);
+		kfree(as->page_table);
+		kfree(as);
+
+		return ENOMEM;	
+	}
+
+	for(i = 0; i<npages; i++)
+	{
+		as->page_table->data->entries->valid_bit = 0;
+		as->page_table->data->entries->paddr = 0;
+	}
+
 
 	/* Initial user-level stack pointer */
 	*stackptr = USERSTACK;
