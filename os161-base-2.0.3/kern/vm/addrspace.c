@@ -96,26 +96,54 @@ as_create(void)
 	as->page_table = kmalloc(sizeof(struct pt));
 	if (as->page_table == NULL)
 	{
+		kfree(as);
 		return NULL;
 	}
+
 
 	as->page_table->code = kmalloc(sizeof(struct segment));
 	if(as->page_table->code == NULL)
 	{
+		kfree(as->page_table);
+		kfree(as);
 		return NULL;
 	}
+
+	as->page_table->code->entries = NULL;
+	as->page_table->code->v_base = 0;
+	as->page_table->code->npages = 0;
+	as->page_table->code->readonly = 1;
 
 	as->page_table->data = kmalloc(sizeof(struct segment));
 	if(as->page_table->data == NULL)
 	{
+		kfree(as->page_table->code);
+		kfree(as->page_table);
+		kfree(as);
 		return NULL;
 	}
+
+	as->page_table->data->entries = NULL;
+	as->page_table->data->v_base = 0;
+	as->page_table->data->npages = 0;
+	as->page_table->data->readonly = 0;
 
 	as->page_table->stack = kmalloc(sizeof(struct segment));
 	if(as->page_table->stack == NULL)
 	{
+		kfree(as->page_table->code);
+		kfree(as->page_table->data);
+		kfree(as->page_table);
+		kfree(as);
 		return NULL;
 	}
+
+	as->page_table->stack->entries = NULL;
+	as->page_table->stack->v_base = 0;
+	as->page_table->stack->npages = 0;
+	as->page_table->stack->readonly = 0;
+
+	/*
 
 	as->page_table->code->entries = kmalloc(sizeof(struct entry));
 	if(as->page_table->code->entries == NULL)
@@ -134,6 +162,8 @@ as_create(void)
 	{
 		return NULL;
 	}
+
+	*/
 
 	return as;
 }
@@ -216,19 +246,83 @@ as_deactivate(void)
  * want to implement them.
  */
 int
-as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
+as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 		 int readable, int writeable, int executable)
 {
-	/*
-	 * Write this.
-	 */
+	size_t npages;
+	int i;
 
-	(void)as;
-	(void)vaddr;
-	(void)memsize;
+	can_sleep();
+
+	/* Align the region. First, the base... */
+	sz += vaddr & ~(vaddr_t)PAGE_FRAME;
+	vaddr &= PAGE_FRAME;
+
+	/* ...and now the length. */
+	sz = (sz + PAGE_SIZE - 1) & PAGE_FRAME;
+
+	npages = sz / PAGE_SIZE;
+
+	/* We don't use these - all pages are read-write */
 	(void)readable;
 	(void)writeable;
 	(void)executable;
+
+
+	if (as->page_table->code->v_base == 0) {
+		as->page_table->code->v_base = vaddr;
+		as->page_table->code->npages = npages;
+		as->page_table->code->entries = kmalloc(npages*sizeof(entry));
+
+		if(as->page_table->code->entries == NULL)
+		{
+			kfree(as->page_table->code);
+			kfree(as->page_table->data);
+			kfree(as->page_table->stack);
+			kfree(as->page_table);
+			kfree(as);
+
+			return ENOMEM;
+		} 
+
+		for(i = 0; i<npages; i++)
+		{
+			as->page_table->code->entries->valid_bit = 0;
+			as->page_table->code->entries->paddr = 0;
+		}
+
+		return 0;
+	}
+
+	if (as->page_table->data->v_base == 0) {
+		as->page_table->data->v_base = vaddr;
+		as->page_table->data->v_base = npages;
+		as->page_table->data->entries = kmalloc(npages*sizeof(entry));
+
+		if(as->page_table->data->entries == NULL)
+		{
+			kfree(as->page_table->code);
+			kfree(as->page_table->data);
+			kfree(as->page_table->stack);
+			kfree(as->page_table);
+			kfree(as);
+
+			return ENOMEM;
+		} 
+
+		for(i = 0; i<npages; i++)
+		{
+			as->page_table->data->entries->valid_bit = 0;
+			as->page_table->data->entries->paddr = 0;
+		}
+
+
+
+		return 0;
+	}
+	
+
+
 	return ENOSYS;
 }
 
@@ -246,10 +340,7 @@ as_prepare_load(struct addrspace *as)
 int
 as_complete_load(struct addrspace *as)
 {
-	/*
-	 * Write this.
-	 */
-
+	can_sleep();
 	(void)as;
 	return 0;
 }
@@ -257,11 +348,7 @@ as_complete_load(struct addrspace *as)
 int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
-	/*
-	 * Write this.
-	 */
-
-	(void)as;
+	KASSERT(as->page_table->stack->vaddr != 0);
 
 	/* Initial user-level stack pointer */
 	*stackptr = USERSTACK;

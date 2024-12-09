@@ -60,6 +60,8 @@
 #include <vnode.h>
 #include <elf.h>
 
+#include "opt-paging"
+
 /*
  * Load a segment at virtual address VADDR. The segment in memory
  * extends from VADDR up to (but not including) VADDR+MEMSIZE. The
@@ -252,14 +254,19 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 		}
 	}
 
+	#if opt-paging == 0
 	result = as_prepare_load(as);
 	if (result) {
 		return result;
 	}
 
+	#endif
+
 	/*
 	 * Now actually load each segment.
 	 */
+
+	#if opt-paging == 0
 
 	for (i=0; i<eh.e_phnum; i++) {
 		off_t offset = eh.e_phoff + i*eh.e_phentsize;
@@ -294,6 +301,8 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 			return result;
 		}
 	}
+
+	#endif
 
 	result = as_complete_load(as);
 	if (result) {

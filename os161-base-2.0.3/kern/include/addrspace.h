@@ -38,6 +38,8 @@
 #include <vm.h>
 #include "opt-dumbvm.h"
 #include "opt-paging.h"
+#include <pt.h>
+#include <segments.h>
 
 struct vnode;
 
