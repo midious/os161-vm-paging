@@ -61,6 +61,9 @@ vm_bootstrap(void)
 
 	//inizializza stats coremap e swap
 	/* Do nothing. */
+
+	coremap_init();
+
 }
 
 void
@@ -90,6 +93,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 	int i;
 	struct addrspace *as;
 	int index_page_table;
+	int result;
 
 	faultaddress &= PAGE_FRAME; //indirizzo logico (pagina) in cui avviene il tlb fault
 
@@ -172,10 +176,40 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 		if(as->page_table->code->entries[index_page_table].valid_bit == 0)
 		{
 			//Non è in memoria perché il valid bit della page table è uguale a 0
-			
-			//funcion che carica dentro la tlb l'indirizzo logico e fisico con roundrobin
 
-			paddr = alloc_upage(); //se non è possibile fare neanche swap, allora termina il processo (system call)
+			paddr = alloc_upage(); //gestisce anche un eventuale swap out per liberare un frame
+									//se non è possibile fare neanche swap, allora termina il processo (system call)
+									//alloc upages gestisce anche la modifica della coremap e l'eventuale swap
+			
+			/*
+			
+			GESTIONE SWAP FILE PIENO
+			
+			*/
+
+			KASSERT((paddr & PAGE_FRAME) == paddr);
+
+			as->page_table->code->entries[index_page_table].valid_bit = 1; // convalido la pagina
+			as->page_table->code->entries[index_page_table].paddr = paddr;
+
+
+			tlb_insert(faultaddress, paddr, 1);
+			
+
+			if(as->page_table->code->entries[index_page_table].swapIndex == -1)
+			{
+				//niente swap: non è nello swapfile
+				result = load_page(as, index_page_table, paddr, 0); 
+				if (result)
+				{
+					return result;
+				}
+			
+			}
+			else
+			{
+				//swap in da fare
+			}
 
 
 		}
@@ -201,6 +235,40 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 			if(as->page_table->data->entries[index_page_table].valid_bit == 0)
 			{
 				//Non è in memoria perché il valid bit della page table è uguale a 0
+
+				paddr = alloc_upage(); //se non è possibile fare neanche swap, allora termina il processo (system call)
+									//alloc upages gestisce anche la modifica della coremap e l'eventuale swap
+			
+				/*
+				
+				GESTIONE SWAP FILE PIENO
+				
+				*/
+
+				KASSERT((paddr & PAGE_FRAME) == paddr);
+
+				as->page_table->data->entries[index_page_table].valid_bit = 1; // convalido la pagina
+				as->page_table->data->entries[index_page_table].paddr = paddr;
+
+
+				tlb_insert(faultaddress, paddr, 0);
+
+				if(as->page_table->data->entries[index_page_table].swapIndex == -1)
+				{
+					//niente swap: non è nello swapfile
+					result = load_page(as, index_page_table, paddr, 1); 
+					if (result)
+					{
+						return result;
+					}
+				
+				}
+				else
+				{
+					//swap in da fare
+				}
+
+				
 				
 			}
 			else
@@ -224,6 +292,32 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 				if(as->page_table->stack->entries[index_page_table].valid_bit == 0)
 				{
 					
+					//Non è in memoria perché il valid bit della page table è uguale a 0
+
+					paddr = alloc_upage(); //se non è possibile fare neanche swap, allora termina il processo (system call)
+										//alloc upages gestisce anche la modifica della coremap e l'eventuale swap
+				
+					/*
+					
+					GESTIONE SWAP FILE PIENO
+					
+					*/
+
+					KASSERT((paddr & PAGE_FRAME) == paddr);
+
+					as->page_table->stack->entries[index_page_table].valid_bit = 1; // convalido la pagina
+					as->page_table->stack->entries[index_page_table].paddr = paddr;
+
+
+					tlb_insert(faultaddress, paddr, 0);
+
+					if(as->page_table->stack->entries[index_page_table].swapIndex != -1)
+					{
+						//è necessario fare lo swap in
+					}
+					
+
+
 				}
 				else
 				{
@@ -239,9 +333,6 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 				return EFAULT;
 			}
 	
-
-	
-
 
 }
 
@@ -379,13 +470,7 @@ as_activate(void)
 
 	//rivedi per bene. Dovrebbe esseregiusto così
 
-	spl = splhigh();
-
-	for (i=0; i<NUM_TLB; i++) {
-		tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
-	}
-
-	splx(spl);
+	tlb_invalid();
 
 	
 }
@@ -454,6 +539,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 		{
 			as->page_table->code->entries->valid_bit = 0;
 			as->page_table->code->entries->paddr = 0;
+			as->page_table->code->entries[i].swapIndex = -1;
 		}
 
 		return 0;
@@ -479,6 +565,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 		{
 			as->page_table->data->entries->valid_bit = 0;
 			as->page_table->data->entries->paddr = 0;
+			as->page_table->data->entries[i].swapIndex = -1;
 		}
 
 
@@ -534,6 +621,8 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 	{
 		as->page_table->data->entries->valid_bit = 0;
 		as->page_table->data->entries->paddr = 0;
+		as->page_table->stack->entries[i].swapIndex = -1;
+
 	}
 
 

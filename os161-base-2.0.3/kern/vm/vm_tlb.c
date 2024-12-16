@@ -34,3 +34,15 @@ void tlb_insert(vaddr_t vaddr, paddr_t paddr, uint8_t readonly)
 
     splx(spl);
 }
+
+
+void tlb_invalid(void)
+{
+    spl = splhigh();
+
+	for (i=0; i<NUM_TLB; i++) {
+		tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
+	}
+
+	splx(spl);
+}

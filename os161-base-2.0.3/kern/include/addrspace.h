@@ -67,6 +67,7 @@ struct addrspace {
 #if OPT_PAGING
         struct addrspace {
                 struct pt* page_table;
+                char* progname;
         }
         
 #endif
