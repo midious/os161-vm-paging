@@ -166,7 +166,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 
 	if (faultaddress >= vbase1 && faultaddress < vtop1) { //l'indirizzo faultaddress è contenuto dentro il segmento di code
 
-		// accedo direttamente a as->page_table->code->entries trovando lìindice di tale vettore
+		// accedo direttamente a as->page_table->code->entries trovando l'indice di tale vettore
 		
 		index_page_table = (int) (faultaddress - vbase1)/PAGE_SIZE;
 		if(as->page_table->code->entries[index_page_table].valid_bit == 0)
@@ -195,7 +195,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 	else
 		if (faultaddress >= vbase2 && faultaddress < vtop2) { //l'indirizzo faultaddress è contenuto dentro il segmento di code
 
-			// accedo direttamente a as->page_table->data->entries trovando lìindice di tale vettore
+			// accedo direttamente a as->page_table->data->entries trovando l'indice di tale vettore
 			
 			index_page_table = (int) (faultaddress - vbase2)/PAGE_SIZE;
 			if(as->page_table->data->entries[index_page_table].valid_bit == 0)
@@ -452,8 +452,8 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 
 		for(i = 0; i<npages; i++)
 		{
-			as->page_table->code->entries->valid_bit = 0;
-			as->page_table->code->entries->paddr = 0;
+			as->page_table->code->entries[i].valid_bit = 0;
+			as->page_table->code->entries[i].paddr = 0;
 		}
 
 		return 0;
@@ -477,8 +477,8 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 
 		for(i = 0; i<npages; i++)
 		{
-			as->page_table->data->entries->valid_bit = 0;
-			as->page_table->data->entries->paddr = 0;
+			as->page_table->data->entries[i].valid_bit = 0;
+			as->page_table->data->entries[i].paddr = 0;
 		}
 
 
@@ -532,8 +532,8 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 
 	for(i = 0; i<npages; i++)
 	{
-		as->page_table->data->entries->valid_bit = 0;
-		as->page_table->data->entries->paddr = 0;
+		as->page_table->stack->entries[i].valid_bit = 0;
+		as->page_table->stack->entries[i].paddr = 0;
 	}
 
 
