@@ -9,7 +9,6 @@ struct pt{
     struct segment* code;
     struct segment* data;
     struct segment* stack;
-
 };
 
 
