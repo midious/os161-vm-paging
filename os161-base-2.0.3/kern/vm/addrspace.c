@@ -39,6 +39,7 @@
 #include <addrspace.h>
 #include <vm.h>
 #include <coremap.h>
+#include <vm_tlb.h>
 
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
@@ -87,18 +88,17 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 	vaddr_t vbase1, vtop1, vbase2, vtop2, stackbase, stacktop;
 	paddr_t paddr;
 	int i;
-	uint32_t ehi, elo;
 	struct addrspace *as;
-	int spl;
+	int index_page_table;
 
-	faultaddress &= PAGE_FRAME; //indirizzo logico in cui avviene il tlb fault
+	faultaddress &= PAGE_FRAME; //indirizzo logico (pagina) in cui avviene il tlb fault
 
 	DEBUG(DB_VM, "dumbvm: fault: 0x%x\n", faultaddress);
 
 	switch (faulttype) {
 	    case VM_FAULT_READONLY:
 		/* We always create pages read-write, so we can't get this */
-		panic("dumbvm: got VM_FAULT_READONLY\n"); //FORSE DA TOGLIERE
+		panic("dumbvm: got VM_FAULT_READONLY\n"); // TODO: NON DEVE ANDARE IN PANIC !!!!!!!!!!!!! Deve solo terminare il processo 
 	    case VM_FAULT_READ:
 	    case VM_FAULT_WRITE:
 		break;
@@ -144,15 +144,103 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 	KASSERT(as->page_table->stack->entries!=NULL);
 
 	//gli indirizzi logici di partenza dei segmenti devono essere allineati alla pagina
-	KASSERT(as->page_table->code->v_base & PAGE_FRAME as->page_table->code->v_base);
-	KASSERT(as->page_table->data->v_base & PAGE_FRAME as->page_table->data->v_base);
-	KASSERT(as->page_table->stack->v_base & PAGE_FRAME as->page_table->stack->v_base);
+	KASSERT((as->page_table->code->v_base & PAGE_FRAME) == as->page_table->code->v_base);
+	KASSERT((as->page_table->data->v_base & PAGE_FRAME) == as->page_table->data->v_base);
+	KASSERT((as->page_table->stack->v_base & PAGE_FRAME) == as->page_table->stack->v_base);
 
 	//Cercare nella ram l'indirizzo fisico fisico corrispondente all'indirizzo logico del faultaddress e CONTROLLARE VALID BIT.
 	//Se non è valida la entry significa che non è in memoria perché non è stato caricato ancora oppure la pagina è stata sostituita.
 	//Se è presente in memoria carico semplicemente nella TLB.
 	//Se non è presente, devo cercare un frame libero
 
+	//devo capire in quale segmento fa parte il faultaddress. 
+
+	vbase1 = as->page_table->code->v_base;
+	vtop1 = vbase1 + as->page_table->code->npages * PAGE_SIZE;
+
+	vbase2 = as->page_table->data->v_base;
+	vtop2 = vbase2 + as->page_table->data->npages * PAGE_SIZE;
+
+	stackbase = as->page_table->stack->v_base;//ricorda: lo stack cresce scendendo con l'indirizzo logico!
+	stacktop = stackbase + as->page_table->stack->npages * PAGE_SIZE;
+
+	if (faultaddress >= vbase1 && faultaddress < vtop1) { //l'indirizzo faultaddress è contenuto dentro il segmento di code
+
+		// accedo direttamente a as->page_table->code->entries trovando lìindice di tale vettore
+		
+		index_page_table = (int) (faultaddress - vbase1)/PAGE_SIZE;
+		if(as->page_table->code->entries[index_page_table].valid_bit == 0)
+		{
+			//Non è in memoria perché il valid bit della page table è uguale a 0
+			
+			//funcion che carica dentro la tlb l'indirizzo logico e fisico con roundrobin
+
+			paddr = alloc_upage(); //se non è possibile fare neanche swap, allora termina il processo (system call)
+
+
+		}
+		else
+		{
+			
+
+			paddr = as->page_table->code->entries[index_page_table].paddr;
+
+			KASSERT((paddr & PAGE_FRAME) == paddr); // deve avere gli ultimi bit (dell'offset) uguali a 0
+
+			tlb_insert(faultaddress, paddr, 1); //l'1 indica che è readonly, quindi il dirty bit della tlb sarà settato a 0
+
+		}
+
+	}
+	else
+		if (faultaddress >= vbase2 && faultaddress < vtop2) { //l'indirizzo faultaddress è contenuto dentro il segmento di code
+
+			// accedo direttamente a as->page_table->data->entries trovando lìindice di tale vettore
+			
+			index_page_table = (int) (faultaddress - vbase2)/PAGE_SIZE;
+			if(as->page_table->data->entries[index_page_table].valid_bit == 0)
+			{
+				//Non è in memoria perché il valid bit della page table è uguale a 0
+				
+			}
+			else
+			{
+				paddr = as->page_table->data->entries[index_page_table].paddr;
+
+				KASSERT((paddr & PAGE_FRAME) == paddr); // deve avere gli ultimi bit (dell'offset) uguali a 0
+
+				tlb_insert(faultaddress, paddr, 0);
+			}
+
+		}
+		else
+			if (faultaddress >= stackbase && faultaddress < stacktop){
+				
+				
+				//Attenzione: lo stack è decrescente, E ANCHE nella page table è decrescente.
+
+
+				index_page_table = (faultaddress - stacktop) / PAGE_SIZE;
+				if(as->page_table->stack->entries[index_page_table].valid_bit == 0)
+				{
+					
+				}
+				else
+				{
+					paddr = as->page_table->stack->entries[index_page_table].paddr;
+
+					KASSERT((paddr & PAGE_FRAME) == paddr); // deve avere gli ultimi bit (dell'offset) uguali a 0
+
+					tlb_insert(faultaddress, paddr, 0);
+				}
+			}
+			else
+			{
+				return EFAULT;
+			}
+	
+
+	
 
 
 }
@@ -277,6 +365,7 @@ as_destroy(struct addrspace *as)
 void
 as_activate(void)
 {
+	int i, spl;
 	struct addrspace *as;
 
 	as = proc_getas();
@@ -348,7 +437,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 	if (as->page_table->code->v_base == 0) {
 		as->page_table->code->v_base = vaddr;
 		as->page_table->code->npages = npages;
-		as->page_table->code->entries = kmalloc(npages*sizeof(entry));
+		as->page_table->code->entries = kmalloc(npages*sizeof(struct entry));
 
 		if(as->page_table->code->entries == NULL)
 		{
@@ -373,7 +462,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 	if (as->page_table->data->v_base == 0) {
 		as->page_table->data->v_base = vaddr;
 		as->page_table->data->v_base = npages;
-		as->page_table->data->entries = kmalloc(npages*sizeof(entry));
+		as->page_table->data->entries = kmalloc(npages*sizeof(struct entry));
 
 		if(as->page_table->data->entries == NULL)
 		{
@@ -426,9 +515,9 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
 	KASSERT(as->page_table->stack->vaddr != 0);
 
-	as->page_table->stack->vaddr = USERSTACK;
+	as->page_table->stack->vaddr = USERSTACK - PAGING_STACKPAGES * PAGE_SIZE;
 	as->page_table->stack->npages = PAGING_STACKPAGES;
-	as->page_table->stack->entries = kmalloc(PAGING_STACKPAGES * sizeof());
+	as->page_table->stack->entries = kmalloc(PAGING_STACKPAGES * sizeof(struct entry));
 
 	if (as->page_table->stack->entries == NULL)
 	{
