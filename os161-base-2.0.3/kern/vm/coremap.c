@@ -10,9 +10,12 @@
 
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 static struct spinlock coremap_lock = SPINLOCK_INITIALIZER;
+static struct spinlock victim_lock = SPINLOCK_INITIALIZER;
 static struct coremap_entry *coremap = NULL;
 static int coremapActive = 0;
 static int nRamFrames=0;
+static unsigned long tail = 0;
+static unsigned long head = 0;
 
 /*
  * Checks if the coremap is active
@@ -41,18 +44,16 @@ void coremap_init(void)
 	for (i = 0; i < nRamFrames; i++)
 	{
 		coremap[i].occupied= 0;
+		coremap[i].freed= 0;
 		coremap[i].allocSize = 0;
-        coremap[i].prevAllocated = 0;
-		coremap[i].nextAllocated = 0;
+        coremap[i].prevAllocated = -1;
+		coremap[i].nextAllocated = -1;
         coremap[i].as = NULL;
         coremap[i].vaddr = 0;
 	}
 
-    //DA CONTROLLARE PERCHÈ LO FA
-	/* Initialize linked list variables */
-	//const_invalid_reference = nRamFrames;
-	//last_alloc = const_invalid_reference;
-	//victim = const_invalid_reference;
+	tail = -1; //indice ultima allocata
+	head = -1; //indice prima allocata
 
 	spinlock_acquire(&coremap_lock);
 	coremapActive = 1;
@@ -74,8 +75,7 @@ void coremap_shutdown(void) {
 
 
 //Cerca se c'è uno slot lungo npages libero da poter utilizzare. Se c'è lo occupa e ritorna l'indirizzo fisico di base
-static paddr_t 
-getfreeppages(unsigned long npages, struct addrspace *as,vaddr_t vaddr) {
+static paddr_t getfreeppages(unsigned long npages, struct addrspace *as,vaddr_t vaddr) {
   paddr_t addr;	
   long i,first, found;
   long np = (long)npages;
@@ -84,8 +84,8 @@ getfreeppages(unsigned long npages, struct addrspace *as,vaddr_t vaddr) {
 
   spinlock_acquire(&coremap_lock);
   for (i=0,first=found=-1; i<nRamFrames; i++) {
-    if (!coremap[i].occupied) { //se non è occupato
-      if (i==0 || coremap[i-1].occupied)  //se è il primo slot della coremap o il precedente non era libero significa
+    if (coremap[i].freed) { //se è stato liberato
+      if (i==0 || !coremap[i-1].freed)  //se è il primo slot della coremap o il precedente non era stato liberato significa
         first = i; //che è il primo slot libero dell'intervallo 
       if (i-first+1 >= np) { //ne cerca liberi, fino a che non solo il numero di pagine richiesto
         found = first;  //ha trovato tutti gli slot liberi che gli servivano
@@ -94,13 +94,14 @@ getfreeppages(unsigned long npages, struct addrspace *as,vaddr_t vaddr) {
     }
   }
   if(found>=0){ //se ha trovato lo spazio libero, setta anche l'addrspace e virtual address se presenti (USER), altrimenti NULL e 0 (KERNEL)
-  for(i=found; i<found+np;i++){
-    coremap[i].occupied=1;
-    coremap[i].as=as;
-    coremap[i].vaddr=vaddr;
-  }
-  coremap[found].allocSize = np;
-  addr = (paddr_t)found * PAGE_SIZE;  //addr=i*PAGE_SIZE ->trova l'indirizzo fisico di base
+	for(i=found; i<found+np;i++){
+		coremap[i].occupied=1;
+		coremap[i].freed=0;
+		coremap[i].as=as;
+		coremap[i].vaddr=vaddr;
+	}
+	coremap[found].allocSize = np;
+	addr = (paddr_t)found * PAGE_SIZE;  //addr=i*PAGE_SIZE ->trova l'indirizzo fisico di base
   }else{
     addr=0;
   }
@@ -111,8 +112,7 @@ getfreeppages(unsigned long npages, struct addrspace *as,vaddr_t vaddr) {
 
 //Chiamata solo dal KERNEL, perchè l'user può allocare 1 sola pagina alla volta.
 //Cerca prima in free pages, altrimenti chiama ram_stealmem()
-static paddr_t
-getppages(unsigned long npages)
+static paddr_t getppages(unsigned long npages)
 {
   paddr_t addr;
   unsigned long i;
@@ -133,6 +133,7 @@ getppages(unsigned long npages)
     for (i=0;i<npages;i++){
         int j=(addr/PAGE_SIZE)+i; //da indirizzo fisico a indice
         coremap[j].occupied=1;
+		coremap[j].freed=0;
     }
     coremap[addr / PAGE_SIZE].allocSize = npages;
     spinlock_release(&coremap_lock);
@@ -155,6 +156,7 @@ static int freeppages(paddr_t addr, unsigned long npages)
 	for (i = first; i < first + np; i++)
 	{
 		coremap[i].occupied = 0;
+		coremap[i].freed=1;
 		coremap[i].vaddr = 0;
 		coremap[i].as = NULL;
 	}
@@ -165,8 +167,7 @@ static int freeppages(paddr_t addr, unsigned long npages)
 }
 
 //alloca alcune pagine virtuali dello spazio kernel
-vaddr_t
-alloc_kpages(unsigned npages)
+vaddr_t alloc_kpages(unsigned npages)
 {
 	paddr_t pa;
 
@@ -192,16 +193,17 @@ void free_kpages(vaddr_t addr)
 
 //ALLOCAZIONE PER I PROCESSI USER (1 PAGINA)
 
-static paddr_t getppages_user(vaddr_t proc_vaddr){
+static paddr_t getppage_user(vaddr_t proc_vaddr){
 	struct addrspace *as;
 	paddr_t addr;
+	unsigned long last_alloc, victim, newvictim;
 
 	as=proc_getas();  //ritorna addrspace del processo corrente
 	KASSERT(as != NULL); //getppage non può essere chiamata prima che la VM sia stata inizializzata
 
 	KASSERT((proc_vaddr & PAGE_FRAME) == proc_vaddr); //l'indirizzo virtuale deve essere quello di inizio di una pagina
 
-	addr= getfreeppages(1,as,proc_vaddr); //cerco una pagina libera
+	addr= getfreeppages(1,as,proc_vaddr); //cerco una pagina libera nei frame liberati
 
 	if (addr == 0)
 	{
@@ -211,7 +213,132 @@ static paddr_t getppages_user(vaddr_t proc_vaddr){
 		spinlock_release(&stealmem_lock);
 	}
 
-	if(addr!=0 && isCoremapActive()){ //aggiornamento Coremap
-		
+	if(isCoremapActive()){ //aggiornamento Coremap
+		//leggo gli indici senza andare in conflitto. Ci lavoro. Li riaggiornerò dopo con un altro lock, senza dover mettere tutto in lock durante le operazioni.
+		spinlock_acquire(&victim_lock);
+		last_alloc = tail;
+		victim = head;
+		spinlock_release(&victim_lock);
+
+		//Se ha trovato spazio nella RAM
+		if(addr!=0){ 
+			spinlock_acquire(&coremap_lock);
+			int index = (addr / PAGE_SIZE);
+			coremap[index].occupied = 1;
+			coremap[index].freed=0;
+			coremap[index].allocSize = 1;
+			coremap[index].as = as;
+			coremap[index].vaddr = proc_vaddr;
+			
+			if(last_alloc!=-1){
+				//si è già allocata una pagina, si collega alle altre aggiornando la linkedlist
+				coremap[last_alloc].nextAllocated=index;
+				coremap[index].prevAllocated=last_alloc;
+				coremap[index].nextAllocated=-1;
+			}else{
+				//forse si può pure togliere (nell'init è già tutto azzerato)
+				coremap[index].prevAllocated=-1;
+				coremap[index].nextAllocated=-1;
+			}
+			spinlock_release(&coremap_lock);
+
+			//aggiornamento FIFO head e tail
+			spinlock_acquire(&victim_lock);
+			if (victim == -1) //prima pagina
+				head = index;
+			tail = index;
+			spinlock_release(&victim_lock);
+
+		}else{
+			//Se non c'è più spazio in RAM
+
+			//To Do: SWAP
+		}
+	}
+	return addr;
+}
+
+//libera una pagina user ed aggiorna la linked list della coremap
+void freeppage_user(paddr_t paddr)
+{
+	unsigned long last_alloc, victim;
+
+	if (isCoremapActive())
+	{
+		unsigned long index = paddr / PAGE_SIZE;
+		KASSERT((unsigned int)nRamFrames > index);
+		KASSERT(coremap[index].allocSize == 1);
+
+		//per gestione vittima - tiene in memoria le ultime pagine aggiunte
+		spinlock_acquire(&victim_lock);
+		last_alloc = tail;
+		victim= head;
+		spinlock_release(&victim_lock);
+
+		//aggiornamento linked list
+		spinlock_acquire(&coremap_lock);
+		//se non ha elementi precedenti
+		if (coremap[index].prevAllocated == -1)
+		{
+			//se non ha elementi successivi
+			if (coremap[index].nextAllocated == -1)
+			{
+				//c'è solo un elemento, invalido indici di tail e head - non c'è più vittima, verrà tolta
+				victim = -1;
+				last_alloc = -1;
+			}
+			else
+			{
+				//ha elementi successivi (è solo la prima pagina)
+				KASSERT(index == victim);  //head
+				coremap[coremap[index].nextAllocated].prevAllocated = -1;
+				victim= coremap[index].nextAllocated; //aggiorno head
+			}
+		}
+		else
+		{
+			//ha degli elementi precedenti
+
+			//non ha degli elementi successivi
+			if (coremap[index].nextAllocated == -1)
+			{
+				// è l'ultima pagina inserita della linked list
+				KASSERT(index == last_alloc);
+				coremap[coremap[index].prevAllocated].nextAllocated = -1;
+				//aggiornamento ultimo allocato - tail 
+				last_alloc = coremap[index].prevAllocated;
+			}
+			else
+			{
+				//in mezzo alla linked list
+				coremap[coremap[index].nextAllocated].prevAllocated = coremap[index].prevAllocated;
+				coremap[coremap[index].prevAllocated].nextAllocated = coremap[index].nextAllocated;
+			}
+		}
+
+		//elimino collegamenti della linked lista dalla entry da eliminare
+		coremap[index].nextAllocated = -1;
+		coremap[index].prevAllocated = -1;
+
+		spinlock_release(&coremap_lock);
+
+		//libero una pagina
+		freeppages(paddr, 1);
+
+		//aggiornamento finale FIFO tail e head, con lock
+		spinlock_acquire(&victim_lock);
+		head = victim;
+		tail= last_alloc;
+		spinlock_release(&victim_lock);
+	}
+
+	paddr_t alloc_upage(vaddr_t vaddr)
+	{
+		paddr_t pa;
+
+		can_sleep();
+		pa = getppage_user(vaddr);
+
+		return pa;
 	}
 }
