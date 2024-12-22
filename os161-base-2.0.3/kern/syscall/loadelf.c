@@ -60,7 +60,7 @@
 #include <vnode.h>
 #include <elf.h>
 
-#include "opt-paging"
+#include "opt-paging.h"
 
 /*
  * Load a segment at virtual address VADDR. The segment in memory

@@ -12,7 +12,7 @@
 #include <elf.h>
 #include <kern/fcntl.h>
 
-static int write_page(vnode* v, paddr_t paddr, int npage, uint8_t segment)
+static int write_page(struct vnode *v, paddr_t paddr, int npage, uint8_t segment)
 {
 
     Elf_Ehdr eh;   /* Executable header */
@@ -94,13 +94,12 @@ static int write_page(vnode* v, paddr_t paddr, int npage, uint8_t segment)
 	}
 
 	switch (ph.p_type) {
-	    case PT_NULL: /* skip */ continue;
-	    case PT_PHDR: /* skip */ continue;
-	    case PT_MIPS_REGINFO: /* skip */ continue;
+	    case PT_NULL: /* skip */ break;
+	    case PT_PHDR: /* skip */ break;
+	    case PT_MIPS_REGINFO: /* skip */ break;
 	    case PT_LOAD: break;
 	    default:
-		kprintf("loadelf: unknown segment type %d\n",
-			ph.p_type);
+			kprintf("loadelf: unknown segment type %d\n",ph.p_type);
 		return ENOEXEC;
 	}
 
@@ -126,7 +125,7 @@ static int write_page(vnode* v, paddr_t paddr, int npage, uint8_t segment)
     }
 
     size_t filesz = PAGE_SIZE;
-    if (npage == npages-1 && ph.p_filesz < npages*PAGE_SIZE)
+    if ((unsigned)npage == (unsigned)(npages-1) && ph.p_filesz < (unsigned)(npages*PAGE_SIZE))
     {
         size_t fragmentation = npages*PAGE_SIZE - ph.p_filesz;
         filesz = PAGE_SIZE - fragmentation;
@@ -136,7 +135,7 @@ static int write_page(vnode* v, paddr_t paddr, int npage, uint8_t segment)
 
 
     
-    if (filesize > memsize) {
+    if (filesz > memsize) {
 		kprintf("ELF: warning: segment filesize > segment memsize\n");
 		filesize = memsize;
 	}
@@ -176,8 +175,9 @@ static int write_page(vnode* v, paddr_t paddr, int npage, uint8_t segment)
 int load_page(struct addrspace* as, int npage, paddr_t paddr, uint8_t segment)
 {
     struct vnode *v;
+	int result;
 
-    progname = as->progname;
+    char* progname = as->progname;
 
     result = vfs_open(progname, O_RDONLY, 0, &v);
 	if (result) {

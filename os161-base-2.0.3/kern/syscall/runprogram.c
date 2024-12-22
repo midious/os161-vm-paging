@@ -44,9 +44,8 @@
 #include <vfs.h>
 #include <syscall.h>
 #include <test.h>
-#include <string.h>
 
-#include "opt-paging"
+#include "opt-paging.h"
 
 /*
  * Load program "progname" and start running it in usermode.

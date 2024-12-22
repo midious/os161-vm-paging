@@ -38,6 +38,7 @@ void tlb_insert(vaddr_t vaddr, paddr_t paddr, uint8_t readonly)
 
 void tlb_invalid(void)
 {
+    int i, spl;
     spl = splhigh();
 
 	for (i=0; i<NUM_TLB; i++) {
