@@ -68,8 +68,9 @@ struct addrspace {
         struct addrspace {
                 struct pt* page_table;
                 char* progname;
-        }
+        };
         
+        void can_sleep(void);
 #endif
 
 

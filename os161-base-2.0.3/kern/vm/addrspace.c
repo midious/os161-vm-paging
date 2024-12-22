@@ -40,7 +40,7 @@
 #include <vm.h>
 #include <coremap.h>
 #include <vm_tlb.h>
-
+#include <swapfile.h>
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
  * assignment, this file is not compiled or linked or in any way
@@ -50,9 +50,9 @@
 
 #define PAGING_STACKPAGES    18
 
-static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
+//static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 
-static struct spinlock freemem_lock = SPINLOCK_INITIALIZER;
+//static struct spinlock freemem_lock = SPINLOCK_INITIALIZER;
 
 
 void
@@ -73,8 +73,7 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
 	panic("dumbvm tried to do tlb shootdown?!\n");
 }
 
-static void
-can_sleep(void)
+void can_sleep(void)
 {
 	if (CURCPU_EXISTS()) {
 		/* must not hold spinlocks */
@@ -90,7 +89,6 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 {
 	vaddr_t vbase1, vtop1, vbase2, vtop2, stackbase, stacktop;
 	paddr_t paddr;
-	int i;
 	struct addrspace *as;
 	int index_page_table;
 	int result;
@@ -177,7 +175,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 		{
 			//Non è in memoria perché il valid bit della page table è uguale a 0
 
-			paddr = alloc_upage(); //gestisce anche un eventuale swap out per liberare un frame
+			paddr = alloc_upage(faultaddress); //gestisce anche un eventuale swap out per liberare un frame
 									//se non è possibile fare neanche swap, allora termina il processo (system call)
 									//alloc upages gestisce anche la modifica della coremap e l'eventuale swap
 			
@@ -208,7 +206,8 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 			}
 			else
 			{
-				//swap in da fare
+				//SWAP IN -code
+				swapin(as->page_table->code->entries[index_page_table].swapIndex,paddr);
 			}
 
 
@@ -236,7 +235,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 			{
 				//Non è in memoria perché il valid bit della page table è uguale a 0
 
-				paddr = alloc_upage(); //se non è possibile fare neanche swap, allora termina il processo (system call)
+				paddr = alloc_upage(faultaddress); //se non è possibile fare neanche swap, allora termina il processo (system call)
 									//alloc upages gestisce anche la modifica della coremap e l'eventuale swap
 			
 				/*
@@ -265,7 +264,8 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 				}
 				else
 				{
-					//swap in da fare
+					//SWAP IN - data
+					swapin(as->page_table->data->entries[index_page_table].swapIndex,paddr);
 				}
 
 				
@@ -294,7 +294,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 					
 					//Non è in memoria perché il valid bit della page table è uguale a 0
 
-					paddr = alloc_upage(); //se non è possibile fare neanche swap, allora termina il processo (system call)
+					paddr = alloc_upage(faultaddress); //se non è possibile fare neanche swap, allora termina il processo (system call)
 										//alloc upages gestisce anche la modifica della coremap e l'eventuale swap
 				
 					/*
@@ -314,6 +314,8 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 					if(as->page_table->stack->entries[index_page_table].swapIndex != -1)
 					{
 						//è necessario fare lo swap in
+						//TODO: qui non c'è il "load_page" se swapIndex==1?
+						swapin(as->page_table->stack->entries[index_page_table].swapIndex,paddr);
 					}
 					
 
@@ -332,8 +334,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 			{
 				return EFAULT;
 			}
-	
-
+	return 0;
 }
 
 
@@ -456,7 +457,6 @@ as_destroy(struct addrspace *as)
 void
 as_activate(void)
 {
-	int i, spl;
 	struct addrspace *as;
 
 	as = proc_getas();
@@ -465,7 +465,7 @@ as_activate(void)
 		 * Kernel thread without an address space; leave the
 		 * prior address space in place.
 		 */
-		return NULL;
+		return;
 	}
 
 	//rivedi per bene. Dovrebbe esseregiusto così
@@ -535,7 +535,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 			return ENOMEM;
 		} 
 
-		for(i = 0; i<npages; i++)
+		for(i = 0; i<(int)npages; i++)
 		{
 			as->page_table->code->entries[i].valid_bit = 0;
 			as->page_table->code->entries[i].paddr = 0;
@@ -561,7 +561,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 			return ENOMEM;
 		} 
 
-		for(i = 0; i<npages; i++)
+		for(i = 0; i<(int)npages; i++)
 		{
 			as->page_table->data->entries[i].valid_bit = 0;
 			as->page_table->data->entries[i].paddr = 0;
@@ -600,9 +600,9 @@ as_complete_load(struct addrspace *as)
 int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
-	KASSERT(as->page_table->stack->vaddr != 0);
+	KASSERT(as->page_table->stack->v_base != 0);
 
-	as->page_table->stack->vaddr = USERSTACK - PAGING_STACKPAGES * PAGE_SIZE;
+	as->page_table->stack->v_base = USERSTACK - PAGING_STACKPAGES * PAGE_SIZE;
 	as->page_table->stack->npages = PAGING_STACKPAGES;
 	as->page_table->stack->entries = kmalloc(PAGING_STACKPAGES * sizeof(struct entry));
 
@@ -617,7 +617,7 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 		return ENOMEM;	
 	}
 
-	for(i = 0; i<npages; i++)
+	for(int i = 0; i<PAGING_STACKPAGES; i++)
 	{
 		as->page_table->stack->entries[i].valid_bit = 0;
 		as->page_table->stack->entries[i].paddr = 0;
