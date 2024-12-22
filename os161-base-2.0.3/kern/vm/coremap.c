@@ -6,7 +6,7 @@
 #include <proc.h>
 #include <addrspace.h>
 #include <coremap.h>
-//#include <swapfile.h>
+#include <swapfile.h>
 
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 static struct spinlock coremap_lock = SPINLOCK_INITIALIZER;
@@ -14,12 +14,10 @@ static struct spinlock victim_lock = SPINLOCK_INITIALIZER;
 static struct coremap_entry *coremap = NULL;
 static int coremapActive = 0;
 static int nRamFrames=0;
-static unsigned long tail = 0;
-static unsigned long head = 0;
+static int tail = 0;
+static int head = 0;
 
-/*
- * Checks if the coremap is active
- */
+//Controlla se la Coremap è attiva
 static int isCoremapActive()
 {
 	int active;
@@ -34,7 +32,7 @@ void coremap_init(void)
 {
 	int i;
 	nRamFrames = ((int)ram_getsize()) / PAGE_SIZE;
-	/* alloc coremap */
+	//alloca la Coremap
 	coremap = kmalloc(sizeof(struct coremap_entry) * nRamFrames);
 	if (coremap == NULL)
 	{
@@ -75,10 +73,10 @@ void coremap_shutdown(void) {
 
 
 //Cerca se c'è uno slot lungo npages libero da poter utilizzare. Se c'è lo occupa e ritorna l'indirizzo fisico di base
-static paddr_t getfreeppages(unsigned long npages, struct addrspace *as,vaddr_t vaddr) {
+static paddr_t getfreeppages(size_t npages, struct addrspace *as,vaddr_t vaddr) {
   paddr_t addr;	
-  long i,first, found;
-  long np = (long)npages;
+  int i,first, found;
+  int np = (int)npages;
 
   if (!isCoremapActive()) return 0; 
 
@@ -112,10 +110,10 @@ static paddr_t getfreeppages(unsigned long npages, struct addrspace *as,vaddr_t 
 
 //Chiamata solo dal KERNEL, perchè l'user può allocare 1 sola pagina alla volta.
 //Cerca prima in free pages, altrimenti chiama ram_stealmem()
-static paddr_t getppages(unsigned long npages)
+static paddr_t getppages(size_t npages)
 {
   paddr_t addr;
-  unsigned long i;
+  int i;
 
   /* try freed pages first */
   addr = getfreeppages(npages,NULL,0);
@@ -130,7 +128,7 @@ static paddr_t getppages(unsigned long npages)
   //aggiornamento tracciamento coremap delle pagine/frame ottenuti
   if (addr!=0 && isCoremapActive()) {
     spinlock_acquire(&coremap_lock);
-    for (i=0;i<npages;i++){
+    for (i=0;i<(int)npages;i++){
         int j=(addr/PAGE_SIZE)+i; //da indirizzo fisico a indice
         coremap[j].occupied=1;
 		coremap[j].freed=0;
@@ -143,9 +141,9 @@ static paddr_t getppages(unsigned long npages)
 }
 
 //Libera un numero desiderato di pagine a partire da addr
-static int freeppages(paddr_t addr, unsigned long npages)
+static int freeppages(paddr_t addr, size_t npages)
 {
-	long i, first, np = (long)npages;
+	int i, first, np = npages;
 
 	if (!isCoremapActive())
 		return 0;
@@ -167,7 +165,7 @@ static int freeppages(paddr_t addr, unsigned long npages)
 }
 
 //alloca alcune pagine virtuali dello spazio kernel
-vaddr_t alloc_kpages(unsigned npages)
+vaddr_t alloc_kpages(size_t npages)
 {
 	paddr_t pa;
 
@@ -185,7 +183,7 @@ void free_kpages(vaddr_t addr)
 	if (isCoremapActive())
 	{
 		paddr_t paddr = addr - MIPS_KSEG0;
-		long first = paddr / PAGE_SIZE;
+		int first = paddr / PAGE_SIZE;
 		KASSERT(nRamFrames > first);
 		freeppages(paddr, coremap[first].allocSize);
 	}
@@ -196,7 +194,8 @@ void free_kpages(vaddr_t addr)
 static paddr_t getppage_user(vaddr_t proc_vaddr){
 	struct addrspace *as;
 	paddr_t addr;
-	unsigned long last_alloc, victim, newvictim;
+	int last_alloc, victim, newvictim, swap_index;
+	struct entry *victim_entry;
 
 	as=proc_getas();  //ritorna addrspace del processo corrente
 	KASSERT(as != NULL); //getppage non può essere chiamata prima che la VM sia stata inizializzata
@@ -250,9 +249,45 @@ static paddr_t getppage_user(vaddr_t proc_vaddr){
 			spinlock_release(&victim_lock);
 
 		}else{
-			//Se non c'è più spazio in RAM
+			//Se non c'è più spazio in RAM - Salvo vittima in Swap (marcando indexSwap e aggiornando validBit PT) e ritorno paddr ram libero
 
-			//To Do: SWAP
+			//****SWAP
+			addr = (paddr_t)victim * PAGE_SIZE; //paddr della vittima da spostare nello swapfile
+			swap_index = swapout(addr);
+
+			spinlock_acquire(&coremap_lock);
+
+			KASSERT(coremap[victim].allocSize == 1);
+			KASSERT(coremap[victim].as!=NULL);
+
+			//ottengo la entry della page table che dovrà essere spostata nello swapfile
+			victim_entry=get_pt_entry(coremap[victim].vaddr, coremap[victim].as);
+			KASSERT(victim_entry != NULL);
+			
+			//salvo l'index dello swapfile dove verrà memorizzata la pagina vittima
+			victim_entry->swapIndex=swap_index;
+			//invalido la entry della page table
+			victim_entry->valid_bit=0;
+
+			//aggiornamento coremap
+			coremap[victim].vaddr = proc_vaddr;
+			coremap[victim].as = as;
+
+			newvictim=coremap[victim].nextAllocated;
+
+			//ultima allocazione, indice della vittima, che ora è riempito con la nuova pagina entrante
+			coremap[last_alloc].nextAllocated=victim;
+			coremap[victim].nextAllocated=-1;
+			coremap[victim].prevAllocated=last_alloc;
+
+			spinlock_release(&coremap_lock);
+
+			spinlock_acquire(&victim_lock);
+			//aggiornamento vittima - testa e coda
+			KASSERT(newvictim != -1);
+			tail = victim;
+			head = newvictim;
+			spinlock_release(&victim_lock);
 		}
 	}
 	return addr;
@@ -261,12 +296,12 @@ static paddr_t getppage_user(vaddr_t proc_vaddr){
 //libera una pagina user ed aggiorna la linked list della coremap
 void freeppage_user(paddr_t paddr)
 {
-	unsigned long last_alloc, victim;
+	int last_alloc, victim;
 
 	if (isCoremapActive())
 	{
-		unsigned long index = paddr / PAGE_SIZE;
-		KASSERT((unsigned int)nRamFrames > index);
+		int index = paddr / PAGE_SIZE;
+		KASSERT(nRamFrames > index);
 		KASSERT(coremap[index].allocSize == 1);
 
 		//per gestione vittima - tiene in memoria le ultime pagine aggiunte
@@ -331,14 +366,14 @@ void freeppage_user(paddr_t paddr)
 		tail= last_alloc;
 		spinlock_release(&victim_lock);
 	}
+}
 
-	paddr_t alloc_upage(vaddr_t vaddr)
-	{
-		paddr_t pa;
+paddr_t alloc_upage(vaddr_t vaddr)
+{
+	paddr_t pa;
 
-		can_sleep();
-		pa = getppage_user(vaddr);
+	can_sleep();
+	pa = getppage_user(vaddr);
 
-		return pa;
-	}
+	return pa;
 }
