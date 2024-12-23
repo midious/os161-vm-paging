@@ -79,6 +79,7 @@ runprogram(char *progname)
 
 	#if opt-paging
 
+		kmalloc((strlen(progname) + 1)*sizeof(char));
 		strcpy(as->progname, progname);
 
 	#endif

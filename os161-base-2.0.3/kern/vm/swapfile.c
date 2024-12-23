@@ -35,7 +35,8 @@ int swapfile_init(){
 int swapout(paddr_t paddr ){ //"dalla ram allo swapfile (disco)"
     struct iovec iov;
     struct uio u;
-    int result, index; //indice della bitmap dove verrà salvato
+    int result;
+    unsigned int index; //indice della bitmap dove verrà salvato
     off_t free_offset;
 
     KASSERT(paddr != 0);
@@ -56,7 +57,7 @@ int swapout(paddr_t paddr ){ //"dalla ram allo swapfile (disco)"
         panic("swapfile.c : Impossibile scrivere sullo swapfile\n");
     }
 
-    KASSERT(index>=0 && index<(SWAPFILE_SIZE/PAGE_SIZE));
+    KASSERT(index<(SWAPFILE_SIZE/PAGE_SIZE));
 
     return index;
 }

@@ -20,6 +20,8 @@ struct segment{
 
 };
 
+struct addrspace;
+
 int load_page(struct addrspace* as, int npage, paddr_t paddr, uint8_t segment);
 
 

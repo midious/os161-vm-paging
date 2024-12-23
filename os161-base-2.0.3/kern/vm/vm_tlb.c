@@ -1,4 +1,5 @@
 #include <spl.h>
+#include <types.h>
 #include <mips/tlb.h>
 #include <vm_tlb.h>
 

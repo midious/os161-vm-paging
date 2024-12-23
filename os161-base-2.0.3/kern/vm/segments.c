@@ -17,7 +17,7 @@ static int write_page(struct vnode *v, paddr_t paddr, int npage, uint8_t segment
 
     Elf_Ehdr eh;   /* Executable header */
 	Elf_Phdr ph;   /* "Program header" = segment header */
-	int result, i;
+	int result;
 	struct iovec iov;
 	struct uio ku;
 	struct addrspace *as;
@@ -108,7 +108,8 @@ static int write_page(struct vnode *v, paddr_t paddr, int npage, uint8_t segment
 
     size_t memsz = PAGE_SIZE;
 
-    int npages;
+    int npages = 0;
+	KASSERT(segment == 0 || segment == 1 || segment == 2);
     switch(segment)
     {
         case 0: //code
@@ -121,6 +122,7 @@ static int write_page(struct vnode *v, paddr_t paddr, int npage, uint8_t segment
             npages = as->page_table->stack->npages;
             break;
         default:
+			break;
 
     }
 
@@ -131,35 +133,35 @@ static int write_page(struct vnode *v, paddr_t paddr, int npage, uint8_t segment
         filesz = PAGE_SIZE - fragmentation;
     }
 
-    int is_executable = ph.p_flags & PF_X;
+    //int is_executable = ph.p_flags & PF_X;
 
 
     
-    if (filesz > memsize) {
+    if (filesz > memsz) {
 		kprintf("ELF: warning: segment filesize > segment memsize\n");
-		filesize = memsize;
+		filesz = memsz;
 	}
 
 	DEBUG(DB_EXEC, "ELF: Loading %lu bytes to 0x%lx\n",
-	      (unsigned long) filesize, (unsigned long) vaddr);
+	      (unsigned long) filesz, (unsigned long) vaddr);
 
 	
-    iov->iov_kbase = (void *) PADDR_TO_KVADDR(paddr);
-	iov->iov_len = memsz;
-	ku->uio_iov = iov;
-	ku->uio_iovcnt = 1;
-	ku->uio_offset = offset;
-	ku->uio_resid = filesz;
-	ku->uio_segflg = UIO_SYSSPACE;
-	ku->uio_rw = UIO_READ;
-	ku->uio_space = NULL;
+    iov.iov_kbase = (void *) PADDR_TO_KVADDR(paddr);
+	iov.iov_len = memsz;
+	ku.uio_iov = &iov;
+	ku.uio_iovcnt = 1;
+	ku.uio_offset = offset;
+	ku.uio_resid = filesz;
+	ku.uio_segflg = UIO_SYSSPACE;
+	ku.uio_rw = UIO_READ;
+	ku.uio_space = NULL;
 
 	result = VOP_READ(v, &ku);
 	if (result) {
 		return result;
 	}
 
-	if (u.uio_resid != 0) {
+	if (ku.uio_resid != 0) {
 		/* short read; problem with executable? */
 		kprintf("ELF: short read on segment - file truncated?\n");
 		return ENOEXEC;

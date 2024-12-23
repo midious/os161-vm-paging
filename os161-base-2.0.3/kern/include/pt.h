@@ -11,8 +11,7 @@ struct pt{
     struct segment* stack;
 };
 
-//TODO: DA CORREGGERE
-struct addrspace; // per ovviare all'errore che non è ancora stato definito "struct addrspace", probabilmente qualche errore di dipendenze
+struct addrspace;
 
 struct entry* get_pt_entry(vaddr_t vaddr, struct addrspace *as);
 

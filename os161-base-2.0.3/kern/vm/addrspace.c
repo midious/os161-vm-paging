@@ -63,6 +63,8 @@ vm_bootstrap(void)
 	/* Do nothing. */
 
 	coremap_init();
+	swapfile_init();
+
 
 }
 
@@ -447,10 +449,83 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 void
 as_destroy(struct addrspace *as)
 {
+
+	unsigned int i;
 	/*
 	 * Clean up as needed.
 	 */
 
+	can_sleep();
+
+	//libera il segmento code
+
+	for(i = 0; i < as->page_table->code->npages; i++)
+	{
+		if(as->page_table->code->entries[i].valid_bit == 1)
+		{
+			freeppage_user(as->page_table->code->entries[i].paddr);
+		}
+		else
+		{
+			if(as->page_table->code->entries[i].swapIndex != -1)
+			{
+				//non è in memoria ma nello swap file
+				swap_free(as->page_table->code->entries[i].swapIndex);
+			}
+		}
+	}
+
+	kfree(as->page_table->code->entries);
+	kfree(as->page_table->code);
+
+
+	//libera il segmento data
+	for(i = 0; i < as->page_table->data->npages; i++)
+	{
+		if(as->page_table->data->entries[i].valid_bit == 1)
+		{
+			freeppage_user(as->page_table->data->entries[i].paddr);
+		}
+		else
+		{
+			if(as->page_table->data->entries[i].swapIndex != -1)
+			{
+				//non è in memoria ma nello swap file
+				swap_free(as->page_table->data->entries[i].swapIndex);
+			}
+		}
+	}
+
+	kfree(as->page_table->data->entries);
+	kfree(as->page_table->data);
+
+
+
+	//libera il segmento di stack
+
+
+	for(i = 0; i < as->page_table->stack->npages; i++)
+	{
+		if(as->page_table->stack->entries[i].valid_bit == 1)
+		{
+			freeppage_user(as->page_table->stack->entries[i].paddr);
+		}
+		else
+		{
+			if(as->page_table->stack->entries[i].swapIndex != -1)
+			{
+				//non è in memoria ma nello swap file
+				swap_free(as->page_table->stack->entries[i].swapIndex);
+			}
+		}
+	}
+
+	kfree(as->page_table->stack->entries);
+	kfree(as->page_table->stack);
+
+
+	kfree(as->page_table);
+	kfree(as->progname);
 	kfree(as);
 }
 
