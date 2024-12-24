@@ -12,7 +12,7 @@
 #include <elf.h>
 #include <kern/fcntl.h>
 
-static int write_page(struct vnode *v, paddr_t paddr, int npage, uint8_t segment)
+static int write_page(struct vnode *v, paddr_t paddr, int npage, int segment)
 {
 
     Elf_Ehdr eh;   /* Executable header */
@@ -22,7 +22,9 @@ static int write_page(struct vnode *v, paddr_t paddr, int npage, uint8_t segment
 	struct uio ku;
 	struct addrspace *as;
 
+
 	as = proc_getas();
+
 
 	/*
 	 * Read the executable header from offset 0 in the file.
@@ -79,7 +81,7 @@ static int write_page(struct vnode *v, paddr_t paddr, int npage, uint8_t segment
 	 * to find where the phdr starts.
 	 */
 
-    off_t offset = eh.e_phoff + segment*eh.e_phentsize;
+    off_t offset = eh.e_phoff + (segment+1)*eh.e_phentsize;
 	uio_kinit(&iov, &ku, &ph, sizeof(ph), offset, UIO_READ);
 
 	result = VOP_READ(v, &ku);
@@ -133,9 +135,6 @@ static int write_page(struct vnode *v, paddr_t paddr, int npage, uint8_t segment
         filesz = PAGE_SIZE - fragmentation;
     }
 
-    //int is_executable = ph.p_flags & PF_X;
-
-
     
     if (filesz > memsz) {
 		kprintf("ELF: warning: segment filesize > segment memsize\n");
@@ -145,16 +144,21 @@ static int write_page(struct vnode *v, paddr_t paddr, int npage, uint8_t segment
 	DEBUG(DB_EXEC, "ELF: Loading %lu bytes to 0x%lx\n",
 	      (unsigned long) filesz, (unsigned long) vaddr);
 
+
+	//int is_executable = ph.p_flags & PF_X;
 	
     iov.iov_kbase = (void *) PADDR_TO_KVADDR(paddr);
+	//iov.iov_ubase = (userptr_t)vaddr;
 	iov.iov_len = memsz;
 	ku.uio_iov = &iov;
 	ku.uio_iovcnt = 1;
 	ku.uio_offset = offset;
 	ku.uio_resid = filesz;
+	//ku.uio_segflg = is_executable ? UIO_USERISPACE : UIO_USERSPACE;
 	ku.uio_segflg = UIO_SYSSPACE;
 	ku.uio_rw = UIO_READ;
 	ku.uio_space = NULL;
+	//ku.uio_space = as;
 
 	result = VOP_READ(v, &ku);
 	if (result) {
@@ -178,7 +182,7 @@ static void zero_a_region(paddr_t paddr, size_t n)
 }
 
 
-int load_page(struct addrspace* as, int npage, paddr_t paddr, uint8_t segment)
+int load_page(struct addrspace* as, int npage, paddr_t paddr, int segment)
 {
     struct vnode *v;
 	int result;

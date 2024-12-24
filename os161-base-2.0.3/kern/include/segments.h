@@ -22,7 +22,7 @@ struct segment{
 
 struct addrspace;
 
-int load_page(struct addrspace* as, int npage, paddr_t paddr, uint8_t segment);
+int load_page(struct addrspace* as, int npage, paddr_t paddr, int segment);
 
 
 #endif //_SEGMENTS_H_

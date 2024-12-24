@@ -192,8 +192,6 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 			as->page_table->code->entries[index_page_table].valid_bit = 1; // convalido la pagina
 			as->page_table->code->entries[index_page_table].paddr = paddr;
 
-
-			tlb_insert(faultaddress, paddr, 0);
 			
 
 			if(as->page_table->code->entries[index_page_table].swapIndex == -1)
@@ -212,6 +210,8 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 				swapin(as->page_table->code->entries[index_page_table].swapIndex,paddr);
 			}
 
+			tlb_insert(faultaddress, paddr, 0);
+
 
 		}
 		else
@@ -222,25 +222,27 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 
 			KASSERT((paddr & PAGE_FRAME) == paddr); // deve avere gli ultimi bit (dell'offset) uguali a 0
 
-			//tlb_insert(faultaddress, paddr, 0); //l'1 indica che è readonly, quindi il dirty bit della tlb sarà settato a 0
+			tlb_insert(faultaddress, paddr, 0); //l'1 indica che è readonly, quindi il dirty bit della tlb sarà settato a 0
 
-			uint32_t hi;
-			uint32_t lo;
+			/* debug
 
-			int flag = 0;
-			for(int i=0; i < NUM_TLB; i++)
+			uint32_t ehi, elo;
+			int i, flag = 0;
+			for(i = 0; i < NUM_TLB; i++)
 			{
-				tlb_read(&hi, &lo, i);
-				if (hi == faultaddress)
+				tlb_read(&ehi, &elo, i);
+				if(ehi == faultaddress)
 				{
 					flag = 1;
 				}
 			}
 
-			if (flag == 0)
+			if (flag != 1)
 			{
 				tlb_insert(faultaddress, paddr, 0);
 			}
+
+			*/
 
 		}
 
@@ -270,7 +272,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 				as->page_table->data->entries[index_page_table].paddr = paddr;
 
 
-				tlb_insert(faultaddress, paddr, 0);
+				
 
 				if(as->page_table->data->entries[index_page_table].swapIndex == -1)
 				{
@@ -288,6 +290,28 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 					swapin(as->page_table->data->entries[index_page_table].swapIndex,paddr);
 				}
 
+				/* debug
+
+				uint32_t ehi, elo;
+				int i, flag = 0;
+				for(i = 0; i < NUM_TLB; i++)
+				{
+					tlb_read(&ehi, &elo, i);
+					if(ehi == faultaddress)
+					{
+						flag = 1;
+					}
+				}
+
+				if (flag != 1)
+				{
+					tlb_insert(faultaddress, paddr, 0);
+				}
+
+				*/
+
+				tlb_insert(faultaddress, paddr, 0);
+
 				
 				
 			}
@@ -298,6 +322,27 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 				KASSERT((paddr & PAGE_FRAME) == paddr); // deve avere gli ultimi bit (dell'offset) uguali a 0
 
 				tlb_insert(faultaddress, paddr, 0);
+
+				/* debug
+
+				uint32_t ehi, elo;
+				int i, flag = 0;
+				for(i = 0; i < NUM_TLB; i++)
+				{
+					tlb_read(&ehi, &elo, i);
+					if(ehi == faultaddress)
+					{
+						flag = 1;
+					}
+				}
+
+				if (flag != 1)
+				{
+					tlb_insert(faultaddress, paddr, 0);
+				}
+
+				*/
+
 			}
 
 		}
@@ -329,7 +374,6 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 					as->page_table->stack->entries[index_page_table].paddr = paddr;
 
 
-					tlb_insert(faultaddress, paddr, 0);
 
 					if(as->page_table->stack->entries[index_page_table].swapIndex != -1)
 					{
@@ -337,6 +381,8 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 						//TODO: qui non c'è il "load_page" se swapIndex==1?
 						swapin(as->page_table->stack->entries[index_page_table].swapIndex,paddr);
 					}
+
+					tlb_insert(faultaddress, paddr, 0);
 					
 
 
@@ -348,6 +394,26 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 					KASSERT((paddr & PAGE_FRAME) == paddr); // deve avere gli ultimi bit (dell'offset) uguali a 0
 
 					tlb_insert(faultaddress, paddr, 0);
+
+					/* debug
+
+					uint32_t ehi, elo;
+					int i, flag=0;
+					for(i = 0; i < NUM_TLB; i++)
+					{
+						tlb_read(&ehi, &elo, i);
+						if(ehi == faultaddress)
+						{
+							flag = 1;
+						}
+					}
+
+					if (flag != 1)
+					{
+						tlb_insert(faultaddress, paddr, 0);
+					}
+
+					*/
 				}
 			}
 			else
