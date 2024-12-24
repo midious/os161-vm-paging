@@ -609,7 +609,8 @@ as_destroy(struct addrspace *as)
 
 
 	kfree(as->page_table);
-	kfree(as->progname);
+	vfs_close(as->vfile);
+	kfree(as->vfile);
 	kfree(as);
 }
 

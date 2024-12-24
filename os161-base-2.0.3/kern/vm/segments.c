@@ -184,26 +184,18 @@ static void zero_a_region(paddr_t paddr, size_t n)
 
 int load_page(struct addrspace* as, int npage, paddr_t paddr, int segment)
 {
-    struct vnode *v;
 	int result;
 
-    result = vfs_open(as->progname, O_RDONLY, 0, &v);
-	if (result) {
-		return result;
-	}
+	zero_a_region(paddr,PAGE_SIZE);
 
-	zero_a_region(paddr, PAGE_SIZE);
-
-    result = write_page(v, paddr, npage, segment);
+    result = write_page(as->vfile, paddr, npage, segment);
 	if (result) {
 		/* p_addrspace will go away when curproc is destroyed */
-		vfs_close(v);
+		vfs_close(as->vfile);
 		return result;
 	}
 
-    vfs_close(v);
+    //vfs_close(v);
 
     return 0;
-
-
 }

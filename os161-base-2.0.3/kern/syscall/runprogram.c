@@ -77,12 +77,6 @@ runprogram(char *progname)
 		return ENOMEM;
 	}
 
-	#if OPT_PAGING
-
-		as->progname = kmalloc((strlen(progname) + 1)*sizeof(char));
-		strcpy(as->progname, progname);
-
-	#endif
 
 	/* Switch to it and activate it. */
 	proc_setas(as);
@@ -95,9 +89,14 @@ runprogram(char *progname)
 		vfs_close(v);
 		return result;
 	}
-
-	/* Done with the file now. */
-	vfs_close(v);
+	#if !OPT_PAGING
+		/* Done with the file now. */
+		vfs_close(v);
+	#else
+		as->vfile=v;
+		//verrà chiuso poi nell' as_destroy()
+	#endif
+	
 
 	/* Define the user stack in the address space */
 	result = as_define_stack(as, &stackptr);

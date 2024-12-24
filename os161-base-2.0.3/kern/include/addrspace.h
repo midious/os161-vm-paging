@@ -67,7 +67,7 @@ struct addrspace {
 #if OPT_PAGING
         struct addrspace {
                 struct pt* page_table;
-                char* progname;
+                struct vnode *vfile; //puntatore al ELF file del programmma
         };
         
         void can_sleep(void);
