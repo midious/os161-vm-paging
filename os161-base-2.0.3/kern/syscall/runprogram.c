@@ -77,9 +77,9 @@ runprogram(char *progname)
 		return ENOMEM;
 	}
 
-	#if opt-paging
+	#if OPT_PAGING
 
-		kmalloc((strlen(progname) + 1)*sizeof(char));
+		as->progname = kmalloc((strlen(progname) + 1)*sizeof(char));
 		strcpy(as->progname, progname);
 
 	#endif

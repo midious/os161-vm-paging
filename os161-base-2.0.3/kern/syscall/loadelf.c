@@ -75,6 +75,8 @@
  * change this code to not use uiomove, be sure to check for this case
  * explicitly.
  */
+
+#if !OPT_PAGING
 static
 int
 load_segment(struct addrspace *as, struct vnode *v,
@@ -145,6 +147,8 @@ load_segment(struct addrspace *as, struct vnode *v,
 
 	return result;
 }
+
+#endif
 
 /*
  * Load an ELF executable user program into the current address space.
@@ -254,7 +258,8 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 		}
 	}
 
-	#if opt-paging == 0
+	#if !OPT_PAGING
+
 	result = as_prepare_load(as);
 	if (result) {
 		return result;
@@ -266,7 +271,7 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 	 * Now actually load each segment.
 	 */
 
-	#if opt-paging == 0
+	#if !OPT_PAGING
 
 	for (i=0; i<eh.e_phnum; i++) {
 		off_t offset = eh.e_phoff + i*eh.e_phentsize;

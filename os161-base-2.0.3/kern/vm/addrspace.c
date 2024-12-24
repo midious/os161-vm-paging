@@ -193,7 +193,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 			as->page_table->code->entries[index_page_table].paddr = paddr;
 
 
-			tlb_insert(faultaddress, paddr, 1);
+			tlb_insert(faultaddress, paddr, 0);
 			
 
 			if(as->page_table->code->entries[index_page_table].swapIndex == -1)
@@ -222,7 +222,25 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 
 			KASSERT((paddr & PAGE_FRAME) == paddr); // deve avere gli ultimi bit (dell'offset) uguali a 0
 
-			tlb_insert(faultaddress, paddr, 1); //l'1 indica che è readonly, quindi il dirty bit della tlb sarà settato a 0
+			//tlb_insert(faultaddress, paddr, 0); //l'1 indica che è readonly, quindi il dirty bit della tlb sarà settato a 0
+
+			uint32_t hi;
+			uint32_t lo;
+
+			int flag = 0;
+			for(int i=0; i < NUM_TLB; i++)
+			{
+				tlb_read(&hi, &lo, i);
+				if (hi == faultaddress)
+				{
+					flag = 1;
+				}
+			}
+
+			if (flag == 0)
+			{
+				tlb_insert(faultaddress, paddr, 0);
+			}
 
 		}
 
@@ -622,7 +640,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 
 	if (as->page_table->data->v_base == 0) {
 		as->page_table->data->v_base = vaddr;
-		as->page_table->data->v_base = npages;
+		as->page_table->data->npages = npages;
 		as->page_table->data->entries = kmalloc(npages*sizeof(struct entry));
 
 		if(as->page_table->data->entries == NULL)
@@ -675,7 +693,7 @@ as_complete_load(struct addrspace *as)
 int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
-	KASSERT(as->page_table->stack->v_base != 0);
+
 
 	as->page_table->stack->v_base = USERSTACK - PAGING_STACKPAGES * PAGE_SIZE;
 	as->page_table->stack->npages = PAGING_STACKPAGES;

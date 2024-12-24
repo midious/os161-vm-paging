@@ -172,6 +172,10 @@ static int write_page(struct vnode *v, paddr_t paddr, int npage, uint8_t segment
 
 }
 
+static void zero_a_region(paddr_t paddr, size_t n)
+{
+	bzero((void *)PADDR_TO_KVADDR(paddr), n);
+}
 
 
 int load_page(struct addrspace* as, int npage, paddr_t paddr, uint8_t segment)
@@ -179,12 +183,12 @@ int load_page(struct addrspace* as, int npage, paddr_t paddr, uint8_t segment)
     struct vnode *v;
 	int result;
 
-    char* progname = as->progname;
-
-    result = vfs_open(progname, O_RDONLY, 0, &v);
+    result = vfs_open(as->progname, O_RDONLY, 0, &v);
 	if (result) {
 		return result;
 	}
+
+	zero_a_region(paddr, PAGE_SIZE);
 
     result = write_page(v, paddr, npage, segment);
 	if (result) {

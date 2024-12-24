@@ -9,5 +9,5 @@ runprogram.o: ../../syscall/runprogram.c ../../include/types.h \
  includelinks/machine/thread.h ../../include/setjmp.h \
  includelinks/kern/machine/setjmp.h ../../include/addrspace.h \
  ../../include/vm.h includelinks/machine/vm.h opt-dumbvm.h opt-paging.h \
- ../../include/vfs.h ../../include/syscall.h opt-syscalls.h opt-fork.h \
- ../../include/test.h
+ ../../include/pt.h ../../include/segments.h ../../include/vfs.h \
+ ../../include/syscall.h opt-syscalls.h opt-fork.h ../../include/test.h
