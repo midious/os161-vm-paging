@@ -12,6 +12,11 @@
 #include <elf.h>
 #include <kern/fcntl.h>
 
+static void zero_a_region(paddr_t paddr, size_t n)
+{
+	bzero((void *)PADDR_TO_KVADDR(paddr), n);
+}
+
 static int write_page(struct vnode *v, paddr_t paddr, int npage, int segment)
 {
 
@@ -20,11 +25,9 @@ static int write_page(struct vnode *v, paddr_t paddr, int npage, int segment)
 	int result;
 	struct iovec iov;
 	struct uio ku;
-	struct addrspace *as;
+	//struct addrspace *as;
 
-
-	as = proc_getas();
-
+	//as = proc_getas();
 
 	/*
 	 * Read the executable header from offset 0 in the file.
@@ -95,92 +98,67 @@ static int write_page(struct vnode *v, paddr_t paddr, int npage, int segment)
 		return ENOEXEC;
 	}
 
-	switch (ph.p_type) {
-	    case PT_NULL: /* skip */ break;
-	    case PT_PHDR: /* skip */ break;
-	    case PT_MIPS_REGINFO: /* skip */ break;
-	    case PT_LOAD: break;
-	    default:
-			kprintf("loadelf: unknown segment type %d\n",ph.p_type);
-		return ENOEXEC;
-	}
+	// Calcola il numero massimo di pagine
+    int max_file_pages = (ph.p_filesz + PAGE_SIZE - 1) / PAGE_SIZE;
+    int max_mem_pages = (ph.p_memsz + PAGE_SIZE - 1) / PAGE_SIZE;
 
-    offset = ph.p_offset + npage * PAGE_SIZE;
-    vaddr_t vaddr = ph.p_vaddr + npage*PAGE_SIZE;
-
-    size_t memsz = PAGE_SIZE;
-
-    int npages = 0;
-	KASSERT(segment == 0 || segment == 1 || segment == 2);
-    switch(segment)
-    {
-        case 0: //code
-            npages = as->page_table->code->npages;
-            break;
-        case 1: 
-            npages = as->page_table->data->npages;
-            break;
-        case 2: 
-            npages = as->page_table->stack->npages;
-            break;
-        default:
-			break;
-
+    // Controlla se la pagina richiesta supera la memoria del segmento
+    if (npage >= max_mem_pages) {
+        kprintf("ELF: Requested page %d exceeds memory size (%d pages)\n", npage, max_mem_pages);
+        return ENOEXEC;
     }
 
+
+    // Gestione delle pagine nella sezione .bss
+    if (npage >= max_file_pages) {
+        // Azzeramento della pagina .bss
+        zero_a_region(paddr, PAGE_SIZE);
+        return 0;
+    }
+
+    // Calcola offset e indirizzi per la lettura dal file ELF
+    offset = ph.p_offset + npage * PAGE_SIZE;
+    vaddr_t vaddr = ph.p_vaddr + npage * PAGE_SIZE;
+
+    size_t memsz = PAGE_SIZE;
     size_t filesz = PAGE_SIZE;
-    if ((unsigned)npage == (unsigned)(npages-1) && ph.p_filesz < (unsigned)(npages*PAGE_SIZE))
-    {
-        size_t fragmentation = npages*PAGE_SIZE - ph.p_filesz;
+
+    // Gestione della frammentazione nell'ultima pagina leggibile
+    if ((unsigned)npage == (unsigned)(max_file_pages - 1) && ph.p_filesz < (unsigned)(max_file_pages * PAGE_SIZE)) {
+        size_t fragmentation = max_file_pages * PAGE_SIZE - ph.p_filesz;
         filesz = PAGE_SIZE - fragmentation;
     }
 
-    
     if (filesz > memsz) {
-		kprintf("ELF: warning: segment filesize > segment memsize\n");
-		filesz = memsz;
-	}
+        kprintf("ELF: warning: segment filesize > segment memsize\n");
+        filesz = memsz;
+    }
 
-	DEBUG(DB_EXEC, "ELF: Loading %lu bytes to 0x%lx\n",
-	      (unsigned long) filesz, (unsigned long) vaddr);
+    DEBUG(DB_EXEC, "ELF: Loading %lu bytes to 0x%lx\n", (unsigned long)filesz, (unsigned long)vaddr);
 
+    // Lettura del contenuto del file nella memoria fisica
+    iov.iov_kbase = (void *)PADDR_TO_KVADDR(paddr);
+    iov.iov_len = memsz;
+    ku.uio_iov = &iov;
+    ku.uio_iovcnt = 1;
+    ku.uio_offset = offset;
+    ku.uio_resid = filesz;
+    ku.uio_segflg = UIO_SYSSPACE;
+    ku.uio_rw = UIO_READ;
+    ku.uio_space = NULL;
 
-	//int is_executable = ph.p_flags & PF_X;
-	
-    iov.iov_kbase = (void *) PADDR_TO_KVADDR(paddr);
-	//iov.iov_ubase = (userptr_t)vaddr;
-	iov.iov_len = memsz;
-	ku.uio_iov = &iov;
-	ku.uio_iovcnt = 1;
-	ku.uio_offset = offset;
-	ku.uio_resid = filesz;
-	//ku.uio_segflg = is_executable ? UIO_USERISPACE : UIO_USERSPACE;
-	ku.uio_segflg = UIO_SYSSPACE;
-	ku.uio_rw = UIO_READ;
-	ku.uio_space = NULL;
-	//ku.uio_space = as;
-
-	result = VOP_READ(v, &ku);
-	if (result) {
-		return result;
-	}
-
-	if (ku.uio_resid != 0) {
-		/* short read; problem with executable? */
-		kprintf("ELF: short read on segment - file truncated?\n");
-		return ENOEXEC;
-	}
-
+    result = VOP_READ(v, &ku);
+    if (result) {
+        return result;
+    }
+    if (ku.uio_resid != 0) {
+        kprintf("ELF: short read on segment - file truncated?\n");
+        return ENOEXEC;
+    }
 
     return 0;
 
 }
-
-static void zero_a_region(paddr_t paddr, size_t n)
-{
-	bzero((void *)PADDR_TO_KVADDR(paddr), n);
-}
-
 
 int load_page(struct addrspace* as, int npage, paddr_t paddr, int segment)
 {

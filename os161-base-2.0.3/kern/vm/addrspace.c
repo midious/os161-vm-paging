@@ -85,6 +85,26 @@ void can_sleep(void)
 		KASSERT(curthread->t_in_interrupt == 0);
 	}
 }
+/*
+static void print_tlb_contents() {
+    uint32_t entryhi, entrylo;
+    int i;
+
+    // Itera su tutte le voci della TLB
+    for (i = 0; i < NUM_TLB; i++) {
+        tlb_read(&entryhi, &entrylo, i);  // Legge la voce della TLB all'indice i
+		
+		if(entrylo & TLBLO_VALID){
+			DEBUG(DB_VM,"valido");
+			DEBUG(DB_VM,"valido");
+		}else{
+			DEBUG(DB_VM,"non valido");
+			DEBUG(DB_VM,"non valido secondo");
+		}
+        
+    }
+}
+*/
 
 
 int vm_fault(int faulttype, vaddr_t faultaddress)
@@ -94,6 +114,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 	struct addrspace *as;
 	int index_page_table;
 	int result;
+
 
 	faultaddress &= PAGE_FRAME; //indirizzo logico (pagina) in cui avviene il tlb fault
 
@@ -210,7 +231,8 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 				swapin(as->page_table->code->entries[index_page_table].swapIndex,paddr);
 			}
 
-			tlb_insert(faultaddress, paddr, 0);
+			tlb_insert(faultaddress, paddr, 1);
+
 
 
 		}
@@ -222,27 +244,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 
 			KASSERT((paddr & PAGE_FRAME) == paddr); // deve avere gli ultimi bit (dell'offset) uguali a 0
 
-			tlb_insert(faultaddress, paddr, 0); //l'1 indica che è readonly, quindi il dirty bit della tlb sarà settato a 0
-
-			/* debug
-
-			uint32_t ehi, elo;
-			int i, flag = 0;
-			for(i = 0; i < NUM_TLB; i++)
-			{
-				tlb_read(&ehi, &elo, i);
-				if(ehi == faultaddress)
-				{
-					flag = 1;
-				}
-			}
-
-			if (flag != 1)
-			{
-				tlb_insert(faultaddress, paddr, 0);
-			}
-
-			*/
+			tlb_insert(faultaddress, paddr, 1); //l'1 indica che è readonly, quindi il dirty bit della tlb sarà settato a 0
 
 		}
 
@@ -272,8 +274,6 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 				as->page_table->data->entries[index_page_table].paddr = paddr;
 
 
-				
-
 				if(as->page_table->data->entries[index_page_table].swapIndex == -1)
 				{
 					//niente swap: non è nello swapfile
@@ -290,29 +290,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 					swapin(as->page_table->data->entries[index_page_table].swapIndex,paddr);
 				}
 
-				/* debug
-
-				uint32_t ehi, elo;
-				int i, flag = 0;
-				for(i = 0; i < NUM_TLB; i++)
-				{
-					tlb_read(&ehi, &elo, i);
-					if(ehi == faultaddress)
-					{
-						flag = 1;
-					}
-				}
-
-				if (flag != 1)
-				{
-					tlb_insert(faultaddress, paddr, 0);
-				}
-
-				*/
-
 				tlb_insert(faultaddress, paddr, 0);
-
-				
 				
 			}
 			else
@@ -322,27 +300,6 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 				KASSERT((paddr & PAGE_FRAME) == paddr); // deve avere gli ultimi bit (dell'offset) uguali a 0
 
 				tlb_insert(faultaddress, paddr, 0);
-
-				/* debug
-
-				uint32_t ehi, elo;
-				int i, flag = 0;
-				for(i = 0; i < NUM_TLB; i++)
-				{
-					tlb_read(&ehi, &elo, i);
-					if(ehi == faultaddress)
-					{
-						flag = 1;
-					}
-				}
-
-				if (flag != 1)
-				{
-					tlb_insert(faultaddress, paddr, 0);
-				}
-
-				*/
-
 			}
 
 		}
@@ -353,7 +310,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 				//Attenzione: lo stack è decrescente, E ANCHE nella page table è decrescente.
 
 
-				index_page_table = (faultaddress - stacktop) / PAGE_SIZE;
+				index_page_table = (faultaddress - stackbase) / PAGE_SIZE;
 				if(as->page_table->stack->entries[index_page_table].valid_bit == 0)
 				{
 					
@@ -381,10 +338,8 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 						//TODO: qui non c'è il "load_page" se swapIndex==1?
 						swapin(as->page_table->stack->entries[index_page_table].swapIndex,paddr);
 					}
-
-					tlb_insert(faultaddress, paddr, 0);
 					
-
+					tlb_insert(faultaddress, paddr, 0);
 
 				}
 				else
@@ -394,26 +349,6 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 					KASSERT((paddr & PAGE_FRAME) == paddr); // deve avere gli ultimi bit (dell'offset) uguali a 0
 
 					tlb_insert(faultaddress, paddr, 0);
-
-					/* debug
-
-					uint32_t ehi, elo;
-					int i, flag=0;
-					for(i = 0; i < NUM_TLB; i++)
-					{
-						tlb_read(&ehi, &elo, i);
-						if(ehi == faultaddress)
-						{
-							flag = 1;
-						}
-					}
-
-					if (flag != 1)
-					{
-						tlb_insert(faultaddress, paddr, 0);
-					}
-
-					*/
 				}
 			}
 			else
@@ -610,7 +545,6 @@ as_destroy(struct addrspace *as)
 
 	kfree(as->page_table);
 	vfs_close(as->vfile);
-	kfree(as->vfile);
 	kfree(as);
 }
 
@@ -628,7 +562,7 @@ as_activate(void)
 		return;
 	}
 
-	//rivedi per bene. Dovrebbe esseregiusto così
+	//rivedi per bene. Dovrebbe essere giusto così
 
 	tlb_invalid();
 
@@ -760,8 +694,6 @@ as_complete_load(struct addrspace *as)
 int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
-
-
 	as->page_table->stack->v_base = USERSTACK - PAGING_STACKPAGES * PAGE_SIZE;
 	as->page_table->stack->npages = PAGING_STACKPAGES;
 	as->page_table->stack->entries = kmalloc(PAGING_STACKPAGES * sizeof(struct entry));

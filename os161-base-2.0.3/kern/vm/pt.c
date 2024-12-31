@@ -37,7 +37,7 @@ struct entry* get_pt_entry(vaddr_t vaddr, struct addrspace *as) {
     vaddr_t stacktop = stackbase + as->page_table->stack->npages * PAGE_SIZE;
 
     if (vaddr >= stackbase && vaddr < stacktop) {
-        int index = (vaddr - stacktop) / PAGE_SIZE;
+        int index = (vaddr - stackbase) / PAGE_SIZE;
         return &as->page_table->stack->entries[index];
     }
 

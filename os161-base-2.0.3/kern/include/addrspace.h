@@ -40,8 +40,9 @@
 #include "opt-paging.h"
 #include <pt.h>
 #include <segments.h>
+#include <vfs.h>
 
-struct vnode;
+//struct vnode;
 
 
 /*

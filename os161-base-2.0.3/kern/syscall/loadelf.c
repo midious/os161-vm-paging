@@ -259,19 +259,17 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 	}
 
 	#if !OPT_PAGING
-
 	result = as_prepare_load(as);
 	if (result) {
 		return result;
 	}
 
-	#endif
 
 	/*
 	 * Now actually load each segment.
 	 */
 
-	#if !OPT_PAGING
+
 
 	for (i=0; i<eh.e_phnum; i++) {
 		off_t offset = eh.e_phoff + i*eh.e_phentsize;
