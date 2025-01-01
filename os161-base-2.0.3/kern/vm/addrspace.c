@@ -41,6 +41,8 @@
 #include <coremap.h>
 #include <vm_tlb.h>
 #include <swapfile.h>
+#include <vmstats.h>
+
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
  * assignment, this file is not compiled or linked or in any way
@@ -59,13 +61,19 @@ void
 vm_bootstrap(void)
 {
 
-	//inizializza stats coremap e swap
-	/* Do nothing. */
+	//inizializza stats, coremap e swap
 
 	coremap_init();
 	swapfile_init();
+	vmstats_init();
 
+}
 
+void vm_shutdown(void)
+{
+	coremap_shutdown();
+	swap_shutdown();
+	vmstats_shutdown();
 }
 
 void
@@ -180,6 +188,10 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 
 	//devo capire in quale segmento fa parte il faultaddress. 
 
+
+	//incremento tlb_faults
+	vmstats_increment(TLB_FAULTS);
+
 	vbase1 = as->page_table->code->v_base;
 	vtop1 = vbase1 + as->page_table->code->npages * PAGE_SIZE;
 
@@ -202,11 +214,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 									//se non è possibile fare neanche swap, allora termina il processo (system call)
 									//alloc upages gestisce anche la modifica della coremap e l'eventuale swap
 			
-			/*
-			
-			GESTIONE SWAP FILE PIENO
-			
-			*/
+			vmstats_increment(PAGE_FAULTS_DISK);
 
 			KASSERT((paddr & PAGE_FRAME) == paddr);
 
@@ -223,12 +231,15 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 				{
 					return result;
 				}
+
+				vmstats_increment(PAGE_FAULTS_ELF);
 			
 			}
 			else
 			{
 				//SWAP IN -code
 				swapin(as->page_table->code->entries[index_page_table].swapIndex,paddr);
+				vmstats_increment(PAGE_FAULTS_SWAP);
 			}
 
 			tlb_insert(faultaddress, paddr, 1);
@@ -246,6 +257,8 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 
 			tlb_insert(faultaddress, paddr, 1); //l'1 indica che è readonly, quindi il dirty bit della tlb sarà settato a 0
 
+			vmstats_increment(TLB_RELOADS);
+
 		}
 
 	}
@@ -262,11 +275,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 				paddr = alloc_upage(faultaddress); //se non è possibile fare neanche swap, allora termina il processo (system call)
 									//alloc upages gestisce anche la modifica della coremap e l'eventuale swap
 			
-				/*
-				
-				GESTIONE SWAP FILE PIENO
-				
-				*/
+				vmstats_increment(PAGE_FAULTS_DISK);
 
 				KASSERT((paddr & PAGE_FRAME) == paddr);
 
@@ -282,12 +291,14 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 					{
 						return result;
 					}
+					vmstats_increment(PAGE_FAULTS_ELF);
 				
 				}
 				else
 				{
 					//SWAP IN - data
 					swapin(as->page_table->data->entries[index_page_table].swapIndex,paddr);
+					vmstats_increment(PAGE_FAULTS_SWAP);
 				}
 
 				tlb_insert(faultaddress, paddr, 0);
@@ -300,6 +311,8 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 				KASSERT((paddr & PAGE_FRAME) == paddr); // deve avere gli ultimi bit (dell'offset) uguali a 0
 
 				tlb_insert(faultaddress, paddr, 0);
+
+				vmstats_increment(TLB_RELOADS);
 			}
 
 		}
@@ -319,11 +332,7 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 					paddr = alloc_upage(faultaddress); //se non è possibile fare neanche swap, allora termina il processo (system call)
 										//alloc upages gestisce anche la modifica della coremap e l'eventuale swap
 				
-					/*
 					
-					GESTIONE SWAP FILE PIENO
-					
-					*/
 
 					KASSERT((paddr & PAGE_FRAME) == paddr);
 
@@ -337,6 +346,13 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 						//è necessario fare lo swap in
 						//TODO: qui non c'è il "load_page" se swapIndex==1?
 						swapin(as->page_table->stack->entries[index_page_table].swapIndex,paddr);
+						vmstats_increment(PAGE_FAULTS_DISK);
+						vmstats_increment(PAGE_FAULTS_SWAP);
+					}
+					else
+					{
+						bzero((void* ) PADDR_TO_KVADDR(paddr), PAGE_SIZE);
+						vmstats_increment(PAGE_FAULTS_ZEROED);
 					}
 					
 					tlb_insert(faultaddress, paddr, 0);
@@ -349,6 +365,8 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 					KASSERT((paddr & PAGE_FRAME) == paddr); // deve avere gli ultimi bit (dell'offset) uguali a 0
 
 					tlb_insert(faultaddress, paddr, 0);
+
+					vmstats_increment(TLB_RELOADS);
 				}
 			}
 			else
@@ -565,6 +583,8 @@ as_activate(void)
 	//rivedi per bene. Dovrebbe essere giusto così
 
 	tlb_invalid();
+
+	vmstats_increment(TLB_INVALIDATIONS);
 
 	
 }

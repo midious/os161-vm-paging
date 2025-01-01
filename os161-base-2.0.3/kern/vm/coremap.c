@@ -7,6 +7,7 @@
 #include <addrspace.h>
 #include <coremap.h>
 #include <swapfile.h>
+#include <vmstats.h>
 
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 static struct spinlock coremap_lock = SPINLOCK_INITIALIZER;
@@ -288,6 +289,8 @@ static paddr_t getppage_user(vaddr_t proc_vaddr){
 			tail = victim;
 			head = newvictim;
 			spinlock_release(&victim_lock);
+
+			vmstats_increment(SWAPFILE_WRITES);
 		}
 	}
 	return addr;

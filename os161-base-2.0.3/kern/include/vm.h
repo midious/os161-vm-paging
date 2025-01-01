@@ -48,6 +48,9 @@
 /* Initialization function */
 void vm_bootstrap(void);
 
+/*Shutdown function*/
+void vm_shutdown(void);
+
 /* Fault handling function called by trap code */
 int vm_fault(int faulttype, vaddr_t faultaddress);
 

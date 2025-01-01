@@ -53,6 +53,8 @@
 
 #include "hello.h"
 
+#include "opt-paging.h"
+
 
 /*
  * These two pieces of data are maintained by the makefiles and build system.
@@ -151,6 +153,10 @@ shutdown(void)
 {
 
 	kprintf("Shutting down.\n");
+
+	#if OPT_PAGING
+		vm_shutdown();
+	#endif
 
 	vfs_clearbootfs();
 	vfs_clearcurdir();
