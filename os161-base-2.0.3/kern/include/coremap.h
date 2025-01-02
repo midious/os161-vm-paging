@@ -22,6 +22,7 @@ struct coremap_entry {
 
 void coremap_init(void);
 void coremap_shutdown(void);
+void invalidVictim(void);
 vaddr_t alloc_kpages(size_t npages);
 void free_kpages(vaddr_t addr);
 paddr_t alloc_upage(vaddr_t vaddr);

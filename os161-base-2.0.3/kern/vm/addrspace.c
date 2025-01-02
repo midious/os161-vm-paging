@@ -557,6 +557,8 @@ as_destroy(struct addrspace *as)
 		}
 	}
 
+	invalidVictim();
+
 	kfree(as->page_table->stack->entries);
 	kfree(as->page_table->stack);
 

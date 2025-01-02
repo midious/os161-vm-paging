@@ -15,9 +15,13 @@ static struct spinlock victim_lock = SPINLOCK_INITIALIZER;
 static struct coremap_entry *coremap = NULL;
 static int coremapActive = 0;
 static int nRamFrames=0;
-static int tail = 0;
-static int head = 0;
+static int tail = -1;
+static int head = -1;
 
+void invalidVictim(void){
+	tail=-1;
+	head=-1;
+}
 //Controlla se la Coremap è attiva
 static int isCoremapActive()
 {
