@@ -130,8 +130,9 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 
 	switch (faulttype) {
 	    case VM_FAULT_READONLY:
-		/* We always create pages read-write, so we can't get this */
-		panic("dumbvm: got VM_FAULT_READONLY\n"); // TODO: NON DEVE ANDARE IN PANIC !!!!!!!!!!!!! Deve solo terminare il processo 
+		//panic("dumbvm: got VM_FAULT_READONLY\n"); NON DEVE ANDARE IN PANIC! Deve solo terminare il processo
+			return EACCES;
+
 	    case VM_FAULT_READ:
 	    case VM_FAULT_WRITE:
 		break;

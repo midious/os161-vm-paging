@@ -39,6 +39,7 @@
 #include <vm.h>
 #include <mainbus.h>
 #include <syscall.h>
+#include "opt-paging.h"
 
 
 /* in exception-*.S */
@@ -89,6 +90,12 @@ kill_curthread(vaddr_t epc, unsigned code, vaddr_t vaddr)
 	    case EX_TLBL:
 	    case EX_TLBS:
 		sig = SIGSEGV;
+	#if OPT_PAGING
+		//quando c'è un EX_MOD= scrittura in area read-only. Uscita dal programma corrente, senza panic del kernel
+		kprintf("Segmentation fault: accesso non consentito in quest'area di memoria\n(%s, epc 0x%x, vaddr 0x%x)\n", trapcodenames[code], epc, vaddr);
+		sys__exit(-1);
+		return;
+	#endif
 		break;
 	    case EX_ADEL:
 	    case EX_ADES:
