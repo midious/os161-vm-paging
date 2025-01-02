@@ -5,5 +5,6 @@
 
 void tlb_insert(vaddr_t vaddr, paddr_t paddr, uint8_t readonly);
 void tlb_invalid(void);
+void tlb_invalid_one(paddr_t paddr);
 
 #endif

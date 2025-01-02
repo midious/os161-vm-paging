@@ -8,6 +8,7 @@
 #include <coremap.h>
 #include <swapfile.h>
 #include <vmstats.h>
+#include <vm_tlb.h>
 
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 static struct spinlock coremap_lock = SPINLOCK_INITIALIZER;
@@ -273,6 +274,8 @@ static paddr_t getppage_user(vaddr_t proc_vaddr){
 			victim_entry->swapIndex=swap_index;
 			//invalido la entry della page table
 			victim_entry->valid_bit=0;
+			//invalido la entry nella tlb
+			tlb_invalid_one(addr);
 
 			//aggiornamento coremap
 			coremap[victim].vaddr = proc_vaddr;
