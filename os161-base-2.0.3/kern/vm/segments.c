@@ -11,6 +11,7 @@
 #include <vnode.h>
 #include <elf.h>
 #include <kern/fcntl.h>
+#include <vmstats.h>
 
 static void zero_a_region(paddr_t paddr, size_t n) {
     // Azzeramento della regione di memoria fisica a partire da paddr
@@ -100,6 +101,7 @@ static int write_page(struct vnode *v, paddr_t paddr, int npage, int segment) {
     // Gestione delle pagine .bss (memoria zero-inizializzata)
     if (npage >= max_file_pages) {
         zero_a_region(paddr, PAGE_SIZE);  // Azzeramento della pagina .bss
+		vmstats_increment(PAGE_FAULTS_ZEROED);
         return 0;
     }
 
@@ -148,6 +150,9 @@ static int write_page(struct vnode *v, paddr_t paddr, int npage, int segment) {
         kprintf("ELF: short read on segment - file truncated?\n");
         return ENOEXEC;
     }
+
+	vmstats_increment(PAGE_FAULTS_ELF);
+	vmstats_increment(PAGE_FAULTS_DISK);
 
     return 0;
 }

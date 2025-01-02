@@ -214,7 +214,6 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 									//se non è possibile fare neanche swap, allora termina il processo (system call)
 									//alloc upages gestisce anche la modifica della coremap e l'eventuale swap
 			
-			vmstats_increment(PAGE_FAULTS_DISK);
 
 			KASSERT((paddr & PAGE_FRAME) == paddr);
 
@@ -232,13 +231,13 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 					return result;
 				}
 
-				vmstats_increment(PAGE_FAULTS_ELF);
 			
 			}
 			else
 			{
 				//SWAP IN -code
 				swapin(as->page_table->code->entries[index_page_table].swapIndex,paddr);
+				vmstats_increment(PAGE_FAULTS_DISK);
 				vmstats_increment(PAGE_FAULTS_SWAP);
 			}
 
@@ -275,7 +274,6 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 				paddr = alloc_upage(faultaddress); //se non è possibile fare neanche swap, allora termina il processo (system call)
 									//alloc upages gestisce anche la modifica della coremap e l'eventuale swap
 			
-				vmstats_increment(PAGE_FAULTS_DISK);
 
 				KASSERT((paddr & PAGE_FRAME) == paddr);
 
@@ -291,13 +289,13 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 					{
 						return result;
 					}
-					vmstats_increment(PAGE_FAULTS_ELF);
 				
 				}
 				else
 				{
 					//SWAP IN - data
 					swapin(as->page_table->data->entries[index_page_table].swapIndex,paddr);
+					vmstats_increment(PAGE_FAULTS_DISK);
 					vmstats_increment(PAGE_FAULTS_SWAP);
 				}
 
