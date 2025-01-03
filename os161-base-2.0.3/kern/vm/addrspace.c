@@ -466,17 +466,186 @@ int
 as_copy(struct addrspace *old, struct addrspace **ret)
 {
 	struct addrspace *newas;
+	unsigned int i;
+	paddr_t paddr;
 
 	newas = as_create();
 	if (newas==NULL) {
 		return ENOMEM;
 	}
 
-	/*
-	 * Write this.
-	 */
+	newas->vfile = old->vfile;
 
-	(void)old;
+	newas->page_table->code->v_base = old->page_table->code->v_base;
+	newas->page_table->code->npages = old->page_table->code->npages;
+	newas->page_table->code->readonly = old->page_table->code->readonly;
+
+	newas->page_table->code->entries = kmalloc(newas->page_table->code->npages * sizeof(struct entry));
+
+	newas->page_table->data->v_base = old->page_table->data->v_base;
+	newas->page_table->data->npages = old->page_table->data->npages;
+	newas->page_table->data->readonly = old->page_table->data->readonly;
+
+	newas->page_table->data->entries = kmalloc(newas->page_table->data->npages * sizeof(struct entry));
+
+	newas->page_table->stack->v_base = old->page_table->stack->v_base;
+	newas->page_table->stack->npages = old->page_table->stack->npages;
+	newas->page_table->stack->readonly = old->page_table->stack->readonly;
+
+	newas->page_table->stack->entries = kmalloc(newas->page_table->stack->npages * sizeof(struct entry));
+
+	if(newas->page_table->code->entries == NULL || newas->page_table->data->entries == NULL || newas->page_table->stack->entries == NULL)
+	{
+		kfree(newas->page_table->code);
+		kfree(newas->page_table->data);
+		kfree(newas->page_table->stack);
+		kfree(newas->page_table);
+		vfs_close(newas->vfile);
+		kfree(newas);
+		return ENOMEM;
+	}
+
+	for(i = 0; i < newas->page_table->code->npages; i++)
+	{
+		if(old->page_table->code->entries[i].valid_bit == 1 ) // entry valida
+		{
+			//duplico in memoria la pagina
+			paddr = alloc_upage(newas->page_table->code->v_base + i*PAGE_SIZE);
+
+			newas->page_table->code->entries[i].paddr = paddr;
+			newas->page_table->code->entries[i].valid_bit = 1;
+			newas->page_table->code->entries[i].swapIndex = -1;
+
+			memmove((void *)PADDR_TO_KVADDR(newas->page_table->code->entries[i].paddr),
+			(const void *)PADDR_TO_KVADDR(old->page_table->code->entries[i].paddr),
+			PAGE_SIZE);
+
+		}
+		else // entry non valida
+		{
+			if(old->page_table->code->entries[i].swapIndex != -1)
+			{
+				//scrivo in memoria la pagina che è dentro lo swap file per poi duplicarla
+				paddr = alloc_upage(old->page_table->code->v_base + i*PAGE_SIZE); //indirizzo logico della pagina i
+
+				swapin(old->page_table->code->entries[i].swapIndex, paddr);
+
+				paddr = alloc_upage(newas->page_table->code->v_base + i*PAGE_SIZE);
+
+				newas->page_table->code->entries[i].paddr = paddr;
+				newas->page_table->code->entries[i].valid_bit = 1;
+				newas->page_table->code->entries[i].swapIndex = -1;
+
+				memmove((void *)PADDR_TO_KVADDR(newas->page_table->code->entries[i].paddr),
+				(const void *)PADDR_TO_KVADDR(old->page_table->code->entries[i].paddr),
+				PAGE_SIZE);
+
+			}
+			else // non è nemmeno nello swap file nello swap file ---> setto tutto invalid
+			{
+				newas->page_table->code->entries[i].paddr = 0;
+				newas->page_table->code->entries[i].valid_bit = 0;
+				newas->page_table->code->entries[i].swapIndex = -1;
+			}
+		}
+	}
+
+
+	//------------------- data
+
+	for(i = 0; i < newas->page_table->data->npages; i++)
+	{
+		if(old->page_table->data->entries[i].valid_bit == 1 ) // entry valida
+		{
+			//duplico in memoria la pagina
+			paddr = alloc_upage(newas->page_table->data->v_base + i*PAGE_SIZE);
+
+			newas->page_table->data->entries[i].paddr = paddr;
+			newas->page_table->data->entries[i].valid_bit = 1;
+			newas->page_table->data->entries[i].swapIndex = -1;
+
+			memmove((void *)PADDR_TO_KVADDR(newas->page_table->data->entries[i].paddr),
+			(const void *)PADDR_TO_KVADDR(old->page_table->data->entries[i].paddr),
+			PAGE_SIZE);
+
+		}
+		else // entry non valida
+		{
+			if(old->page_table->data->entries[i].swapIndex != -1)
+			{
+				//scrivo in memoria la pagina che è dentro lo swap file per poi duplicarla
+				paddr = alloc_upage(old->page_table->data->v_base + i*PAGE_SIZE); //indirizzo logico della pagina i
+
+				swapin(old->page_table->data->entries[i].swapIndex, paddr);
+
+				paddr = alloc_upage(newas->page_table->data->v_base + i*PAGE_SIZE);
+
+				newas->page_table->data->entries[i].paddr = paddr;
+				newas->page_table->data->entries[i].valid_bit = 1;
+				newas->page_table->data->entries[i].swapIndex = -1;
+
+				memmove((void *)PADDR_TO_KVADDR(newas->page_table->data->entries[i].paddr),
+				(const void *)PADDR_TO_KVADDR(old->page_table->data->entries[i].paddr),
+				PAGE_SIZE);
+
+			}
+			else // non è nemmeno nello swap file nello swap file ---> setto tutto invalid
+			{
+				newas->page_table->data->entries[i].paddr = 0;
+				newas->page_table->data->entries[i].valid_bit = 0;
+				newas->page_table->data->entries[i].swapIndex = -1;
+			}
+		}
+	}
+
+	//-----------------------stack
+
+	for(i = 0; i < newas->page_table->stack->npages; i++)
+	{
+		if(old->page_table->stack->entries[i].valid_bit == 1 ) // entry valida
+		{
+			//duplico in memoria la pagina
+			paddr = alloc_upage(newas->page_table->stack->v_base + i*PAGE_SIZE);
+
+			newas->page_table->stack->entries[i].paddr = paddr;
+			newas->page_table->stack->entries[i].valid_bit = 1;
+			newas->page_table->stack->entries[i].swapIndex = -1;
+
+			memmove((void *)PADDR_TO_KVADDR(newas->page_table->stack->entries[i].paddr),
+			(const void *)PADDR_TO_KVADDR(old->page_table->stack->entries[i].paddr),
+			PAGE_SIZE);
+
+		}
+		else // entry non valida
+		{
+			if(old->page_table->stack->entries[i].swapIndex != -1)
+			{
+				//scrivo in memoria la pagina che è dentro lo swap file per poi duplicarla
+				paddr = alloc_upage(old->page_table->stack->v_base + i*PAGE_SIZE); //indirizzo logico della pagina i
+
+				swapin(old->page_table->stack->entries[i].swapIndex, paddr);
+
+				paddr = alloc_upage(newas->page_table->stack->v_base + i*PAGE_SIZE);
+
+				newas->page_table->stack->entries[i].paddr = paddr;
+				newas->page_table->stack->entries[i].valid_bit = 1;
+				newas->page_table->stack->entries[i].swapIndex = -1;
+
+				memmove((void *)PADDR_TO_KVADDR(newas->page_table->stack->entries[i].paddr),
+				(const void *)PADDR_TO_KVADDR(old->page_table->stack->entries[i].paddr),
+				PAGE_SIZE);
+
+			}
+			else // non è nemmeno nello swap file nello swap file ---> setto tutto invalid
+			{
+				newas->page_table->stack->entries[i].paddr = 0;
+				newas->page_table->stack->entries[i].valid_bit = 0;
+				newas->page_table->stack->entries[i].swapIndex = -1;
+			}
+		}
+	}
+
+	
 
 	*ret = newas;
 	return 0;
