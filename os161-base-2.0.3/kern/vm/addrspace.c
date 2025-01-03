@@ -52,11 +52,6 @@
 
 #define PAGING_STACKPAGES    18
 
-//static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
-
-//static struct spinlock freemem_lock = SPINLOCK_INITIALIZER;
-
-
 void
 vm_bootstrap(void)
 {
@@ -93,27 +88,6 @@ void can_sleep(void)
 		KASSERT(curthread->t_in_interrupt == 0);
 	}
 }
-/*
-static void print_tlb_contents() {
-    uint32_t entryhi, entrylo;
-    int i;
-
-    // Itera su tutte le voci della TLB
-    for (i = 0; i < NUM_TLB; i++) {
-        tlb_read(&entryhi, &entrylo, i);  // Legge la voce della TLB all'indice i
-		
-		if(entrylo & TLBLO_VALID){
-			DEBUG(DB_VM,"valido");
-			DEBUG(DB_VM,"valido");
-		}else{
-			DEBUG(DB_VM,"non valido");
-			DEBUG(DB_VM,"non valido secondo");
-		}
-        
-    }
-}
-*/
-
 
 int vm_fault(int faulttype, vaddr_t faultaddress)
 {
@@ -343,7 +317,6 @@ int vm_fault(int faulttype, vaddr_t faultaddress)
 					if(as->page_table->stack->entries[index_page_table].swapIndex != -1)
 					{
 						//è necessario fare lo swap in
-						//TODO: qui non c'è il "load_page" se swapIndex==1?
 						swapin(as->page_table->stack->entries[index_page_table].swapIndex,paddr);
 						vmstats_increment(PAGE_FAULTS_DISK);
 						vmstats_increment(PAGE_FAULTS_SWAP);
@@ -436,28 +409,6 @@ as_create(void)
 	as->page_table->stack->v_base = 0;
 	as->page_table->stack->npages = 0;
 	as->page_table->stack->readonly = 0;
-
-	/*
-
-	as->page_table->code->entries = kmalloc(sizeof(struct entry));
-	if(as->page_table->code->entries == NULL)
-	{
-		return NULL;
-	}
-
-	as->page_table->data->entries = kmalloc(sizeof(struct entry));
-	if(as->page_table->data->entries == NULL)
-	{
-		return NULL;
-	}
-
-	as->page_table->stack->entries = kmalloc(sizeof(struct entry));
-	if(as->page_table->stack->entries == NULL)
-	{
-		return NULL;
-	}
-
-	*/
 
 	return as;
 }
@@ -749,8 +700,6 @@ as_activate(void)
 		 */
 		return;
 	}
-
-	//rivedi per bene. Dovrebbe essere giusto così
 
 	tlb_invalid();
 

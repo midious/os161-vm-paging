@@ -65,15 +65,11 @@ void coremap_init(void)
 }
 
 void coremap_shutdown(void) {
-	/* Deactivate coremap */
+	//disattiva la coremap
 	spinlock_acquire(&coremap_lock);
 	coremapActive = 0;
 	spinlock_release(&coremap_lock);
-	/*
-	 * Free the array
-	 * we can't acquire the lock because it is needed by
-	 * the kfree()
-	 */
+
 	kfree(coremap);
 }
 
@@ -121,12 +117,11 @@ static paddr_t getppages(size_t npages)
   paddr_t addr;
   int i;
 
-  /* try freed pages first */
+  //cerca prima una pagina precedentemente liberata
   addr = getfreeppages(npages,NULL,0);
 
   //se non trova niente fa la ram_stealmem
   if (addr == 0) {
-    /* call stealmem */
     spinlock_acquire(&stealmem_lock);
     addr = ram_stealmem(npages);
     spinlock_release(&stealmem_lock);
@@ -241,7 +236,6 @@ static paddr_t getppage_user(vaddr_t proc_vaddr){
 				coremap[index].prevAllocated=last_alloc;
 				coremap[index].nextAllocated=-1;
 			}else{
-				//forse si può pure togliere (nell'init è già tutto azzerato)
 				coremap[index].prevAllocated=-1;
 				coremap[index].nextAllocated=-1;
 			}

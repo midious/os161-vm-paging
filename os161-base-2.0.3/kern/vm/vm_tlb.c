@@ -6,7 +6,6 @@
 
 static int tlb_get_rr_victim(void)
 {
-
     int victim;
     static unsigned int next_victim = 0;
     victim = next_victim;

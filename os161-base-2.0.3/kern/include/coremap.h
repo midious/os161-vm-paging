@@ -3,9 +3,6 @@
 
 #include <addrspace.h>
 
-/*
- * Structure used to keep track of the state of all memory pages.
- */
 struct coremap_entry {
     bool occupied;       // Defines the state of the page 1=occupied  0=free
     bool freed;         //Indica se la entry è stata liberata (utile per la getfreepages) freed=1 è stata liberata freed=0 non è stata liberata (sarà occupata o untracked)

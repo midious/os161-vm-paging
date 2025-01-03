@@ -6,7 +6,6 @@
 #include <vm.h>
 #include <swapfile.h>
 #include <bitmap.h>
-//#include <vmstats.h>
 
 static struct spinlock swap_lock = SPINLOCK_INITIALIZER;
 
